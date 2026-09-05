@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Apple Music Like PWA Player</title>
-  
+  <!-- MP3/音声メタデータ解析ライブラリ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
   <!-- PWA & Web App Settings -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -921,15 +922,17 @@
       document.getElementById('playlistsTabContent').style.display = tab === 'playlists' ? 'block' : 'none';
     }
 
-    function renderSongs() {
+   function renderSongs() {
       const container = document.getElementById('songListContainer');
-      const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
       const sortBy = document.getElementById('sortSelect').value;
 
-      let filtered = songsData.filter(s => 
-        s.title.toLowerCase().includes(searchQuery) || 
-        s.artist.toLowerCase().includes(searchQuery)
-      );
+      let filtered = songsData.filter(s => {
+        if (!searchQuery) return true;
+        const title = (s.title || '').toLowerCase();
+        const artist = (s.artist || '').toLowerCase();
+        return title.includes(searchQuery) || artist.includes(searchQuery);
+      });
 
       if (sortBy === 'title') {
         filtered.sort((a, b) => a.title.localeCompare(b.title));
@@ -992,12 +995,11 @@
     }
 
 /* ==========================================
-   6. File Import & Processing (修正版)
+   6. File Import & Processing
    ========================================== */
 function setupDragAndDrop() {
   const zone = document.getElementById('dropZone');
 
-  // ドラッグ＆ドロップのデフォルト動作（ファイルが開く現象）を完全に防ぐ
   ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
     zone.addEventListener(eventName, (e) => {
       e.preventDefault();
@@ -1021,20 +1023,58 @@ function setupDragAndDrop() {
   });
 }
 
+// MP3からID3タグ（曲名・アーティスト・ジャケット画像）を取得
+function parseAudioMetadata(file) {
+  return new Promise((resolve) => {
+    const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
+    const fallbackData = { title: defaultTitle, artist: '不明なアーティスト', coverUrl: null };
+
+    if (!window.jsmediatags) {
+      resolve(fallbackData);
+      return;
+    }
+
+    window.jsmediatags.read(file, {
+      onSuccess: function(tag) {
+        const tags = tag.tags;
+        const title = tags.title ? tags.title.trim() : defaultTitle;
+        const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
+        let coverUrl = null;
+
+        if (tags.picture) {
+          const { data, format } = tags.picture;
+          let base64String = "";
+          for (let i = 0; i < data.length; i++) {
+            base64String += String.fromCharCode(data[i]);
+          }
+          coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
+        }
+
+        resolve({ title, artist, coverUrl });
+      },
+      onError: function() {
+        resolve(fallbackData);
+      }
+    });
+  });
+}
+
 async function handleFileImport(files) {
   let addedCount = 0;
 
   for (let file of files) {
-    // MIMEタイプだけでなくファイル拡張子でも判定（MIMEが空文字や特殊な場合対策）
     const isAudioType = file.type.startsWith('audio/') || file.type === '';
     const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
 
     if (!isAudioType && !isAudioExtension) continue;
 
-    const title = file.name.replace(/\.[^/.]+$/, "");
+    // メタデータから曲名・アーティスト・ジャケットを自動抽出
+    const meta = await parseAudioMetadata(file);
+
     const newSong = {
-      title: title,
-      artist: 'ローカルアーティスト',
+      title: meta.title,
+      artist: meta.artist,
+      coverUrl: meta.coverUrl,
       audioBlob: file,
       addedAt: Date.now()
     };
@@ -1047,397 +1087,445 @@ async function handleFileImport(files) {
   if (addedCount > 0) {
     renderSongs();
   } else {
-    alert('対応している音声ファイル（MP3, WAV, M4A等）が見つかりませんでした。');
+    alert('対応している音声ファイルが見つかりませんでした。');
   }
 
-  // inputの値をリセットして同じファイルを再選択可能にする
   document.getElementById('fileInput').value = '';
 }
 
-    async function handleFileImport(files) {
-      for (let file of files) {
-        if (!file.type.startsWith('audio/')) continue;
+async function addNewManualSong() {
+  const titleInput = document.getElementById('inputTitle');
+  const artistInput = document.getElementById('inputArtist');
 
-        const title = file.name.replace(/\.[^/.]+$/, "");
-        const newSong = {
-          title: title,
-          artist: 'ローカルアーティスト',
-          audioBlob: file,
-          addedAt: Date.now()
-        };
+  const title = titleInput.value.trim();
+  const artist = artistInput.value.trim() || '不明なアーティスト';
 
-        const saved = await saveSongToDB(newSong);
-        songsData.unshift(saved);
-      }
-      renderSongs();
-    }
+  if (!title) {
+    alert('曲名を入力してください。');
+    return;
+  }
 
-    async function addNewManualSong() {
-      const titleInput = document.getElementById('inputTitle');
-      const artistInput = document.getElementById('inputArtist');
+  const newSong = {
+    title: title,
+    artist: artist,
+    coverUrl: null,
+    audioBlob: null,
+    addedAt: Date.now()
+  };
 
-      if (!titleInput.value.trim()) return alert('曲名を入力してください。');
+  const saved = await saveSongToDB(newSong);
+  songsData.unshift(saved);
 
-      const newSong = {
-        title: titleInput.value.trim(),
-        artist: artistInput.value.trim() || 'Unknown Artist',
-        addedAt: Date.now()
-      };
+  titleInput.value = '';
+  artistInput.value = '';
 
-      const saved = await saveSongToDB(newSong);
-      songsData.unshift(saved);
+  renderSongs();
+}
 
-      titleInput.value = '';
-      artistInput.value = '';
-      renderSongs();
-    }
+async function deleteSingleSong(id) {
+  if (!confirm('この楽曲を削除してもよろしいですか？')) return;
+  await deleteSongFromDB(id);
+  songsData = songsData.filter(s => s.id !== id);
+  selectedSongIds.delete(id);
 
-    /* ==========================================
-       7. Batch Operations Logic
-       ========================================== */
-    function toggleBatchMode() {
-      isBatchMode = !isBatchMode;
-      if (!isBatchMode) {
-        selectedSongIds.clear();
-      }
-      document.getElementById('batchToolbar').classList.toggle('active', isBatchMode);
-      renderSongs();
-    }
+  if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === id) {
+    const audio = document.getElementById('audioPlayer');
+    audio.pause();
+    currentPlayingIndex = -1;
+    updatePlayerUI();
+  }
 
-    function toggleSelectSong(id) {
-      if (selectedSongIds.has(id)) {
-        selectedSongIds.delete(id);
+  renderSongs();
+}
+
+/* ==========================================
+   7. Batch Processing Functions
+   ========================================== */
+function toggleBatchMode() {
+  isBatchMode = !isBatchMode;
+  if (!isBatchMode) {
+    selectedSongIds.clear();
+  }
+  renderSongs();
+}
+
+function toggleSelectSong(id) {
+  if (selectedSongIds.has(id)) {
+    selectedSongIds.delete(id);
+  } else {
+    selectedSongIds.add(id);
+  }
+  renderSongs();
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    songsData.forEach(s => selectedSongIds.add(s.id));
+  } else {
+    selectedSongIds.clear();
+  }
+  renderSongs();
+}
+
+function updateBatchToolbarUI() {
+  const toolbar = document.getElementById('batchToolbar');
+  toolbar.classList.toggle('active', isBatchMode);
+
+  const countText = document.getElementById('selectedCountText');
+  countText.innerText = `${selectedSongIds.size}件選択中`;
+
+  const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
+  }
+}
+
+function populatePlaylistDropdown() {
+  const select = document.getElementById('batchPlaylistSelect');
+  select.innerHTML = '<option value="">追加先...</option>';
+  playlistsData.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    select.appendChild(opt);
+  });
+}
+
+async function executeBatchAddToPlaylist() {
+  const playlistId = Number(document.getElementById('batchPlaylistSelect').value);
+  if (!playlistId) {
+    alert('追加先のプレイリストを選択してください。');
+    return;
+  }
+  if (selectedSongIds.size === 0) {
+    alert('曲が選択されていません。');
+    return;
+  }
+
+  const playlist = playlistsData.find(p => p.id === playlistId);
+  if (playlist) {
+    const newIds = Array.from(selectedSongIds);
+    playlist.songIds = Array.from(new Set([...playlist.songIds, ...newIds]));
+    await savePlaylistToDB(playlist);
+    alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
+    selectedSongIds.clear();
+    toggleBatchMode();
+    renderPlaylists();
+  }
+}
+
+async function executeBatchDelete() {
+  if (selectedSongIds.size === 0) {
+    alert('曲が選択されていません。');
+    return;
+  }
+
+  if (!confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) return;
+
+  for (let id of selectedSongIds) {
+    await deleteSongFromDB(id);
+  }
+
+  songsData = songsData.filter(s => !selectedSongIds.has(s.id));
+  selectedSongIds.clear();
+  toggleBatchMode();
+  renderSongs();
+}
+
+/* ==========================================
+   8. Audio Player Core Logic
+   ========================================== */
+function playSongById(id) {
+  const index = songsData.findIndex(s => s.id === id);
+  if (index !== -1) {
+    playSongAtIndex(index);
+  }
+}
+
+function playSongAtIndex(index) {
+  if (index < 0 || index >= songsData.length) return;
+
+  currentPlayingIndex = index;
+  const song = songsData[currentPlayingIndex];
+
+  const audio = document.getElementById('audioPlayer');
+
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+
+  if (song.audioBlob) {
+    currentAudioUrl = URL.createObjectURL(song.audioBlob);
+    audio.src = currentAudioUrl;
+    audio.play().catch(e => console.error(e));
+  } else {
+    alert('この楽曲には音声データが紐付けられていません。');
+    return;
+  }
+
+  updatePlayerUI();
+  renderSongs();
+}
+
+function togglePlay() {
+  const audio = document.getElementById('audioPlayer');
+  if (currentPlayingIndex === -1) {
+    if (songsData.length > 0) playSongAtIndex(0);
+    return;
+  }
+
+  if (audio.paused) {
+    audio.play();
+  } else {
+    audio.pause();
+  }
+  updatePlayerUI();
+}
+
+function playNext() {
+  if (songsData.length === 0) return;
+
+  if (isShuffle) {
+    const nextIndex = Math.floor(Math.random() * songsData.length);
+    playSongAtIndex(nextIndex);
+  } else {
+    let nextIndex = currentPlayingIndex + 1;
+    if (nextIndex >= songsData.length) {
+      if (repeatMode === 'ALL') {
+        nextIndex = 0;
       } else {
-        selectedSongIds.add(id);
-      }
-      renderSongs();
-    }
-
-    function toggleSelectAll(checked) {
-      if (checked) {
-        songsData.forEach(s => selectedSongIds.add(s.id));
-      } else {
-        selectedSongIds.clear();
-      }
-      renderSongs();
-    }
-
-    function updateBatchToolbarUI() {
-      document.getElementById('selectedCountText').textContent = `${selectedSongIds.size}件選択中`;
-      document.getElementById('selectAllCheckbox').checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
-    }
-
-    async function executeBatchDelete() {
-      if (selectedSongIds.size === 0) return alert('削除対象を選択してください。');
-      
-      if (confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) {
-        for (let id of selectedSongIds) {
-          await deleteSongFromDB(id);
-        }
-        songsData = songsData.filter(s => !selectedSongIds.has(s.id));
-        selectedSongIds.clear();
-        renderSongs();
-      }
-    }
-
-    async function deleteSingleSong(id) {
-      if (confirm('この楽曲を削除しますか？')) {
-        await deleteSongFromDB(id);
-        songsData = songsData.filter(s => s.id !== id);
-        renderSongs();
-      }
-    }
-
-    async function executeBatchAddToPlaylist() {
-      const playlistId = parseInt(document.getElementById('batchPlaylistSelect').value);
-      if (!playlistId) return alert('追加先のプレイリストを選択してください。');
-      if (selectedSongIds.size === 0) return alert('対象の楽曲を選択してください。');
-
-      const playlist = playlistsData.find(p => p.id === playlistId);
-      if (playlist) {
-        selectedSongIds.forEach(id => {
-          if (!playlist.songIds.includes(id)) {
-            playlist.songIds.push(id);
-          }
-        });
-        await savePlaylistToDB(playlist);
-        alert(`${selectedSongIds.size} 件の楽曲を 「${playlist.name}」 に追加しました。`);
-        selectedSongIds.clear();
-        toggleBatchMode();
-        renderPlaylists();
-      }
-    }
-
-    function populatePlaylistDropdown() {
-      const select = document.getElementById('batchPlaylistSelect');
-      select.innerHTML = `<option value="">追加先...</option>`;
-      playlistsData.forEach(p => {
-        select.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
-      });
-    }
-
-    /* ==========================================
-       8. Playback Engine Core & Modes
-       ========================================== */
-    function playSongById(id) {
-      const index = songsData.findIndex(s => s.id === id);
-      if (index === -1) return;
-      
-      currentPlayingIndex = index;
-      const song = songsData[index];
-
-      const audioPlayer = document.getElementById('audioPlayer');
-
-      if (currentAudioUrl) {
-        URL.revokeObjectURL(currentAudioUrl);
-      }
-
-      if (song.audioBlob) {
-        currentAudioUrl = URL.createObjectURL(song.audioBlob);
-        audioPlayer.src = currentAudioUrl;
-      } else {
-        audioPlayer.removeAttribute('src');
-      }
-
-      // Update Mini Player UI
-      document.getElementById('playerMiniTitle').textContent = song.title;
-      document.getElementById('playerMiniArtist').textContent = song.artist;
-      document.getElementById('miniPlayBtnIcon').className = 'fa-solid fa-pause';
-
-      // Update Full Player UI
-      document.getElementById('fullPlayerTitle').textContent = song.title;
-      document.getElementById('fullPlayerArtist').textContent = song.artist;
-      document.getElementById('fullPlayBtnIcon').className = 'fa-solid fa-circle-pause';
-
-      if (song.audioBlob) {
-        audioPlayer.play().catch(() => {});
-      }
-
-      setupMediaSession(song);
-      renderSongs();
-    }
-
-    function togglePlay() {
-      const audioPlayer = document.getElementById('audioPlayer');
-      const miniIcon = document.getElementById('miniPlayBtnIcon');
-      const fullIcon = document.getElementById('fullPlayBtnIcon');
-
-      if (currentPlayingIndex === -1 && songsData.length > 0) {
-        playSongById(songsData[0].id);
         return;
       }
-
-      if (audioPlayer.paused && audioPlayer.src) {
-        audioPlayer.play();
-        miniIcon.className = 'fa-solid fa-pause';
-        fullIcon.className = 'fa-solid fa-circle-pause';
-      } else {
-        audioPlayer.pause();
-        miniIcon.className = 'fa-solid fa-play';
-        fullIcon.className = 'fa-solid fa-circle-play';
-      }
     }
+    playSongAtIndex(nextIndex);
+  }
+}
 
-    function toggleShuffle() {
-      isShuffle = !isShuffle;
-      document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
-      document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
+function playPrev() {
+  if (songsData.length === 0) return;
+
+  let prevIndex = currentPlayingIndex - 1;
+  if (prevIndex < 0) {
+    prevIndex = songsData.length - 1;
+  }
+  playSongAtIndex(prevIndex);
+}
+
+function handleSongEnd() {
+  if (repeatMode === 'ONE') {
+    playSongAtIndex(currentPlayingIndex);
+  } else {
+    playNext();
+  }
+}
+
+function toggleShuffle() {
+  isShuffle = !isShuffle;
+  document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
+  document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
+}
+
+function toggleRepeat() {
+  if (repeatMode === 'OFF') repeatMode = 'ALL';
+  else if (repeatMode === 'ALL') repeatMode = 'ONE';
+  else repeatMode = 'OFF';
+
+  const isBtnActive = repeatMode !== 'OFF';
+  const miniBtn = document.getElementById('miniRepeatBtn');
+  const fullBtn = document.getElementById('fullRepeatBtn');
+
+  miniBtn.classList.toggle('active', isBtnActive);
+  fullBtn.classList.toggle('active', isBtnActive);
+
+  if (repeatMode === 'ONE') {
+    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+  } else {
+    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+  }
+}
+
+function updateProgress() {
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
+
+  const pct = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('miniProgressBar').style.width = `${pct}%`;
+
+  const fullSlider = document.getElementById('fullSeekSlider');
+  if (fullSlider) fullSlider.value = pct;
+
+  document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
+  document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
+}
+
+function seekMiniPlayer(e) {
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
+
+  const rect = e.currentTarget.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const width = rect.width;
+
+  audio.currentTime = (clickX / width) * audio.duration;
+}
+
+function onSeekSliderChange(val) {
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
+
+  audio.currentTime = (val / 100) * audio.duration;
+}
+
+function setVolume(val) {
+  const audio = document.getElementById('audioPlayer');
+  audio.volume = val;
+}
+
+function updatePlayerUI() {
+  const audio = document.getElementById('audioPlayer');
+  const isPaused = audio.paused;
+
+  const song = songsData[currentPlayingIndex];
+
+  const miniTitle = document.getElementById('playerMiniTitle');
+  const miniArtist = document.getElementById('playerMiniArtist');
+  const miniCover = document.getElementById('playerMiniCover');
+  const miniPlayIcon = document.getElementById('miniPlayBtnIcon');
+
+  const fullTitle = document.getElementById('fullPlayerTitle');
+  const fullArtist = document.getElementById('fullPlayerArtist');
+  const fullCover = document.getElementById('fullPlayerCover');
+  const fullPlayIcon = document.getElementById('fullPlayBtnIcon');
+
+  if (song) {
+    miniTitle.innerText = song.title;
+    miniArtist.innerText = song.artist;
+    fullTitle.innerText = song.title;
+    fullArtist.innerText = song.artist;
+
+    if (song.coverUrl) {
+      miniCover.innerHTML = `<img src="${song.coverUrl}">`;
+      fullCover.innerHTML = `<img src="${song.coverUrl}">`;
+    } else {
+      miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
+      fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
     }
+  }
 
-    function toggleRepeat() {
-      const miniBtn = document.getElementById('miniRepeatBtn');
-      const fullBtn = document.getElementById('fullRepeatBtn');
+  miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
+  fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
+}
 
-      if (repeatMode === 'OFF') {
-        repeatMode = 'ALL';
-        miniBtn.classList.add('active');
-        fullBtn.classList.add('active');
-      } else if (repeatMode === 'ALL') {
-        repeatMode = 'ONE';
-      } else {
-        repeatMode = 'OFF';
-        miniBtn.classList.remove('active');
-        fullBtn.classList.remove('active');
-      }
-    }
+/* ==========================================
+   9. Modals & Helper Functions
+   ========================================== */
+function openFullPlayer() {
+  document.getElementById('fullPlayerModal').classList.add('active');
+}
 
-    function playNext() {
-      if (songsData.length === 0) return;
+function closeFullPlayer() {
+  document.getElementById('fullPlayerModal').classList.remove('active');
+}
 
-      if (isShuffle) {
-        let nextIndex = Math.floor(Math.random() * songsData.length);
-        if (songsData.length > 1 && nextIndex === currentPlayingIndex) {
-          nextIndex = (nextIndex + 1) % songsData.length;
-        }
-        currentPlayingIndex = nextIndex;
-      } else {
-        currentPlayingIndex = (currentPlayingIndex + 1) % songsData.length;
-      }
+function openCreatePlaylistModal() {
+  const modal = new bootstrap.Modal(document.getElementById('createPlaylistModal'));
+  modal.show();
+}
 
-      playSongById(songsData[currentPlayingIndex].id);
-    }
+async function saveNewPlaylist() {
+  const input = document.getElementById('newPlaylistNameInput');
+  const name = input.value.trim();
+  if (!name) return;
 
-    function playPrev() {
-      if (songsData.length === 0) return;
-      currentPlayingIndex = (currentPlayingIndex - 1 + songsData.length) % songsData.length;
-      playSongById(songsData[currentPlayingIndex].id);
-    }
+  const newPlaylist = {
+    name: name,
+    songIds: []
+  };
 
-    function handleSongEnd() {
-      if (repeatMode === 'ONE') {
-        playSongById(songsData[currentPlayingIndex].id);
-      } else if (repeatMode === 'ALL' || isShuffle || currentPlayingIndex < songsData.length - 1) {
-        playNext();
-      } else {
-        document.getElementById('miniPlayBtnIcon').className = 'fa-solid fa-play';
-        document.getElementById('fullPlayBtnIcon').className = 'fa-solid fa-circle-play';
-      }
-    }
+  await savePlaylistToDB(newPlaylist);
+  await loadPlaylistsFromDB();
 
-    function updateProgress() {
-      const audio = document.getElementById('audioPlayer');
-      if (!audio.duration) return;
+  input.value = '';
+  bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
+  populatePlaylistDropdown();
+  renderPlaylists();
+}
 
-      const pct = (audio.currentTime / audio.duration) * 100;
-      document.getElementById('miniProgressBar').style.width = pct + '%';
-      document.getElementById('fullSeekSlider').value = pct;
+function openPlaylistDetail(id) {
+  const playlist = playlistsData.find(p => p.id === id);
+  if (!playlist) return;
 
-      document.getElementById('currentTimeText').textContent = formatTime(audio.currentTime);
-      document.getElementById('durationTimeText').textContent = formatTime(audio.duration);
-    }
+  document.getElementById('playlistDetailTitle').innerText = playlist.name;
+  const container = document.getElementById('playlistSongListContainer');
+  container.innerHTML = '';
 
-    function onSeekSliderChange(val) {
-      const audio = document.getElementById('audioPlayer');
-      if (audio.duration) {
-        audio.currentTime = (val / 100) * audio.duration;
-      }
-    }
+  const playlistSongs = songsData.filter(s => playlist.songIds.includes(s.id));
 
-    function seekMiniPlayer(e) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const pct = clickX / rect.width;
-      const audio = document.getElementById('audioPlayer');
-      if (audio.duration) {
-        audio.currentTime = pct * audio.duration;
-      }
-    }
+  if (playlistSongs.length === 0) {
+    container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
+  } else {
+    playlistSongs.forEach(song => {
+      const li = document.createElement('li');
+      li.className = 'song-item';
+      li.innerHTML = `
+        <div class="song-cover" onclick="playSongById(${song.id})">
+          ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid fa-music text-secondary"></i>`}
+        </div>
+        <div class="song-details" onclick="playSongById(${song.id})">
+          <div class="song-title">${escapeHtml(song.title)}</div>
+          <div class="song-artist">${escapeHtml(song.artist)}</div>
+        </div>
+      `;
+      container.appendChild(li);
+    });
+  }
 
-    function setVolume(val) {
-      document.getElementById('audioPlayer').volume = val;
-    }
+  const modal = new bootstrap.Modal(document.getElementById('playlistDetailModal'));
+  modal.show();
+}
 
-    /* ==========================================
-       9. Modal Window Controllers
-       ========================================== */
-    function openFullPlayer() {
-      document.getElementById('fullPlayerModal').classList.add('active');
-    }
+function openSettingsModal() {
+  const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+  modal.show();
+}
 
-    function closeFullPlayer() {
-      document.getElementById('fullPlayerModal').classList.remove('active');
-    }
+async function clearAllData() {
+  if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
 
-    function openCreatePlaylistModal() {
-      new bootstrap.Modal(document.getElementById('createPlaylistModal')).show();
-    }
+  const tx1 = db.transaction('songs', 'readwrite');
+  tx1.objectStore('songs').clear();
 
-    async function saveNewPlaylist() {
-      const nameInput = document.getElementById('newPlaylistNameInput');
-      if (!nameInput.value.trim()) return alert('名前を入力してください');
+  const tx2 = db.transaction('playlists', 'readwrite');
+  tx2.objectStore('playlists').clear();
 
-      const newPlaylist = {
-        id: Date.now(),
-        name: nameInput.value.trim(),
-        songIds: []
-      };
+  songsData = [];
+  playlistsData = [];
 
-      playlistsData.push(newPlaylist);
-      await savePlaylistToDB(newPlaylist);
-      populatePlaylistDropdown();
-      renderPlaylists();
+  renderSongs();
+  renderPlaylists();
 
-      bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
-      nameInput.value = '';
-    }
+  bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+  alert('すべてのデータを削除しました。');
+}
 
-    function openPlaylistDetail(id) {
-      const playlist = playlistsData.find(p => p.id === id);
-      if (!playlist) return;
+function formatTime(sec) {
+  if (isNaN(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
 
-      document.getElementById('playlistDetailTitle').textContent = playlist.name;
-      const container = document.getElementById('playlistSongListContainer');
-      container.innerHTML = '';
-
-      const pSongs = songsData.filter(s => playlist.songIds.includes(s.id));
-
-      if (pSongs.length === 0) {
-        container.innerHTML = `<li class="text-center text-muted py-4 small">楽曲が含まれていません</li>`;
-      } else {
-        pSongs.forEach(song => {
-          const li = document.createElement('li');
-          li.className = 'song-item';
-          li.innerHTML = `
-            <div class="song-cover" onclick="playSongById(${song.id})">
-              <i class="fa-solid fa-music text-secondary"></i>
-            </div>
-            <div class="song-details" onclick="playSongById(${song.id})">
-              <div class="song-title">${escapeHtml(song.title)}</div>
-              <div class="song-artist">${escapeHtml(song.artist)}</div>
-            </div>
-          `;
-          container.appendChild(li);
-        });
-      }
-
-      new bootstrap.Modal(document.getElementById('playlistDetailModal')).show();
-    }
-
-    function openSettingsModal() {
-      new bootstrap.Modal(document.getElementById('settingsModal')).show();
-    }
-
-    async function clearAllData() {
-      if (confirm('すべてのデータおよび楽曲ライブラリを消去しますか？')) {
-        const tx = db.transaction(['songs', 'playlists'], 'readwrite');
-        tx.objectStore('songs').clear();
-        tx.objectStore('playlists').clear();
-        songsData = [];
-        playlistsData = [];
-        renderSongs();
-        renderPlaylists();
-        alert('データを初期化しました。');
-      }
-    }
-
-    /* ==========================================
-       10. Native Utilities & Media Session
-       ========================================== */
-    function setupMediaSession(song) {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: song.title,
-          artist: song.artist,
-          album: 'Apple Music PWA'
-        });
-
-        navigator.mediaSession.setActionHandler('play', togglePlay);
-        navigator.mediaSession.setActionHandler('pause', togglePlay);
-        navigator.mediaSession.setActionHandler('nexttrack', playNext);
-        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-      }
-    }
-
-    function formatTime(sec) {
-      if (isNaN(sec)) return '0:00';
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60);
-      return `${m}:${s < 10 ? '0' : ''}${s}`;
-    }
-
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-    }
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+}
   </script>
 </body>
 </html>
