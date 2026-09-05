@@ -636,7 +636,7 @@
           <i class="fa-solid fa-cloud-arrow-up text-danger mb-2" style="font-size: 28px;"></i>
           <div class="fw-bold small">楽曲ファイルを追加 (ドラッグ＆ドロップ対応)</div>
           <div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A ファイルに対応</div>
-          <input type="file" id="fileInput" accept="audio/*" multiple style="display: none;" onchange="handleFileImport(this.files)">
+          <input type="file" id="fileInput" accept="audio/*, .mp3, .wav, .m4a, .aac" multiple style="display: none;" onchange="handleFileImport(this.files)">
         </div>
       </div>
 
@@ -991,24 +991,68 @@
       });
     }
 
-    /* ==========================================
-       6. File Import & Processing
-       ========================================== */
-    function setupDragAndDrop() {
-      const zone = document.getElementById('dropZone');
-      zone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        zone.classList.add('dragover');
-      });
-      zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-      zone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        zone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-          handleFileImport(e.dataTransfer.files);
-        }
-      });
+/* ==========================================
+   6. File Import & Processing (修正版)
+   ========================================== */
+function setupDragAndDrop() {
+  const zone = document.getElementById('dropZone');
+
+  // ドラッグ＆ドロップのデフォルト動作（ファイルが開く現象）を完全に防ぐ
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    zone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+  });
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+  });
+
+  zone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files.length > 0) {
+      handleFileImport(dt.files);
     }
+  });
+}
+
+async function handleFileImport(files) {
+  let addedCount = 0;
+
+  for (let file of files) {
+    // MIMEタイプだけでなくファイル拡張子でも判定（MIMEが空文字や特殊な場合対策）
+    const isAudioType = file.type.startsWith('audio/') || file.type === '';
+    const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
+
+    if (!isAudioType && !isAudioExtension) continue;
+
+    const title = file.name.replace(/\.[^/.]+$/, "");
+    const newSong = {
+      title: title,
+      artist: 'ローカルアーティスト',
+      audioBlob: file,
+      addedAt: Date.now()
+    };
+
+    const saved = await saveSongToDB(newSong);
+    songsData.unshift(saved);
+    addedCount++;
+  }
+
+  if (addedCount > 0) {
+    renderSongs();
+  } else {
+    alert('対応している音声ファイル（MP3, WAV, M4A等）が見つかりませんでした。');
+  }
+
+  // inputの値をリセットして同じファイルを再選択可能にする
+  document.getElementById('fileInput').value = '';
+}
 
     async function handleFileImport(files) {
       for (let file of files) {
