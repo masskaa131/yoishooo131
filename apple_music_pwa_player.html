@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Apple Music Like PWA Player</title>
+  
+  <!-- PWA & Web App Settings -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  
+  <!-- External CSS Libraries -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <style>
+    /* ==========================================
+       1. Global Styles & Theme Variables
+       ========================================== */
+    :root {
+      --bg-black: #000000;
+      --bg-glass: rgba(25, 25, 25, 0.78);
+      --card-glass: rgba(38, 38, 42, 0.65);
+      --card-glass-hover: rgba(55, 55, 60, 0.8);
+      --accent-color: #fa233b; /* Apple Music Red */
+      --accent-color-hover: #ff3b52;
+      --text-main: #ffffff;
+      --text-sub: #a1a1a6;
+      --border-glass: rgba(255, 255, 255, 0.12);
+      --modal-glass: rgba(30, 30, 32, 0.88);
+      --player-bg: rgba(18, 18, 20, 0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-black);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      padding-bottom: 140px;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar Design */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    /* Glassmorphism Utilities */
+    .glass-header {
+      background: var(--bg-glass);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border-bottom: 1px solid var(--border-glass);
+    }
+
+    .glass-card {
+      background: var(--card-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 16px;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .glass-modal {
+      background: var(--modal-glass) !important;
+      backdrop-filter: blur(30px) !important;
+      -webkit-backdrop-filter: blur(30px) !important;
+      border: 1px solid var(--border-glass) !important;
+      color: var(--text-main);
+      border-radius: 20px;
+    }
+
+    /* ==========================================
+       2. Navigation & Header
+       ========================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-tabs-custom {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-glass);
+      padding-bottom: 10px;
+    }
+
+    .nav-tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-sub);
+      font-size: 16px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-tab-btn.active {
+      background: var(--accent-color);
+      color: #fff;
+    }
+
+    /* ==========================================
+       3. Batch Operation Toolbar
+       ========================================== */
+    .batch-toolbar {
+      display: none;
+      background: rgba(250, 35, 59, 0.15);
+      border: 1px solid var(--accent-color);
+      border-radius: 14px;
+      padding: 12px 18px;
+      margin-bottom: 16px;
+      align-items: center;
+      justify-content: space-between;
+      animation: fadeIn 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+
+    .batch-toolbar.active {
+      display: flex;
+    }
+
+    /* ==========================================
+       4. Song & Playlist List Views
+       ========================================== */
+    .song-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .song-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 14px;
+      margin-bottom: 8px;
+      transition: background 0.2s, border-color 0.2s;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid transparent;
+    }
+
+    .song-item:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .song-item.active {
+      background: rgba(250, 35, 59, 0.18);
+      border-color: rgba(250, 35, 59, 0.4);
+    }
+
+    .song-checkbox {
+      width: 22px;
+      height: 22px;
+      margin-right: 14px;
+      accent-color: var(--accent-color);
+      cursor: pointer;
+    }
+
+    .song-cover {
+      width: 50px;
+      height: 50px;
+      border-radius: 10px;
+      object-fit: cover;
+      margin-right: 14px;
+      background: #2c2c2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    .song-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .song-details {
+      flex: 1;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .song-title {
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-main);
+    }
+
+    .song-artist {
+      font-size: 13px;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .song-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action-icon {
+      background: none;
+      border: none;
+      color: var(--text-sub);
+      font-size: 16px;
+      padding: 8px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .btn-action-icon:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Playlist Grid */
+    .playlist-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+    }
+
+    .playlist-card {
+      background: var(--card-glass);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 14px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .playlist-card:hover {
+      transform: translateY(-4px);
+      background: var(--card-glass-hover);
+    }
+
+    .playlist-cover-placeholder {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 12px;
+      background: #252528;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38px;
+      color: var(--accent-color);
+      margin-bottom: 10px;
+    }
+
+    /* Drop Zone Style */
+    .drop-zone {
+      border: 2px dashed var(--border-glass);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.02);
+      transition: border-color 0.2s, background 0.2s;
+      cursor: pointer;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent-color);
+      background: rgba(250, 35, 59, 0.08);
+    }
+
+    /* ==========================================
+       5. Mini Player (Bottom Bar)
+       ========================================== */
+    .player-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 86px;
+      background: var(--player-bg);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border-top: 1px solid var(--border-glass);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      z-index: 200;
+      box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+    }
+
+    .player-mini-info {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .player-mini-cover {
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      background: #2c2c2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 14px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .player-mini-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .player-mini-details {
+      overflow: hidden;
+    }
+
+    .player-mini-title {
+      font-size: 15px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-mini-artist {
+      font-size: 13px;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .player-controls button {
+      background: none;
+      border: none;
+      color: var(--text-sub);
+      font-size: 18px;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s, transform 0.1s;
+      padding: 6px;
+    }
+
+    .player-controls button:active {
+      transform: scale(0.88);
+    }
+
+    .player-controls button.active {
+      color: var(--accent-color);
+    }
+
+    .player-controls button.btn-play {
+      font-size: 26px;
+      color: var(--text-main);
+    }
+
+    /* Mini Progress Bar */
+    .mini-progress-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+    }
+
+    .mini-progress-bar {
+      height: 100%;
+      background: var(--accent-color);
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+
+    /* ==========================================
+       6. Fullscreen Expand Player Modal
+       ========================================== */
+    .full-player-modal {
+      position: fixed;
+      top: 100%;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 15, 18, 0.96);
+      backdrop-filter: blur(40px);
+      -webkit-backdrop-filter: blur(40px);
+      z-index: 300;
+      transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .full-player-modal.active {
+      top: 0;
+    }
+
+    .full-player-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .full-player-cover-container {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 1;
+      margin: 20px auto;
+      border-radius: 20px;
+      background: #2c2c2e;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .full-player-cover-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .full-player-info {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .full-player-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .full-player-artist {
+      font-size: 16px;
+      color: var(--text-sub);
+    }
+
+    .seek-slider-container {
+      margin-bottom: 20px;
+    }
+
+    .seek-slider {
+      width: 100%;
+      accent-color: var(--accent-color);
+      height: 6px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    .time-stamps {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 6px;
+    }
+
+    .full-controls {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .full-controls button {
+      background: none;
+      border: none;
+      color: var(--text-main);
+      font-size: 22px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .full-controls button.btn-main-play {
+      font-size: 48px;
+      color: var(--accent-color);
+    }
+
+    .volume-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-sub);
+      padding: 0 10px;
+    }
+
+    .volume-slider {
+      flex: 1;
+      accent-color: var(--text-sub);
+      height: 4px;
+    }
+
+    /* Form UI Customization */
+    .form-control-dark {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-glass);
+      color: #fff;
+      border-radius: 10px;
+    }
+
+    .form-control-dark:focus {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-color: var(--accent-color);
+      box-shadow: none;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header glass-header">
+    <div class="app-title"><i class="fa-solid fa-music text-danger me-2"></i>ライブラリ</div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-light rounded-pill" onclick="toggleBatchMode()">
+        <i class="fa-solid fa-list-check me-1"></i>選択
+      </button>
+      <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="openSettingsModal()">
+        <i class="fa-solid fa-gear"></i>
+      </button>
+    </div>
+  </header>
+
+  <div class="container mt-3">
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs-custom">
+      <button class="nav-tab-btn active" id="tabSongsBtn" onclick="switchTab('songs')">すべての曲</button>
+      <button class="nav-tab-btn" id="tabPlaylistsBtn" onclick="switchTab('playlists')">プレイリスト</button>
+    </div>
+
+    <!-- SONGS TAB CONTENT -->
+    <div id="songsTabContent">
+      <!-- Search & Sort Controls -->
+      <div class="glass-card mb-3">
+        <div class="row g-2">
+          <div class="col-7">
+            <input type="text" id="searchInput" class="form-control form-control-dark form-control-sm" placeholder="曲名、歌手名で検索..." oninput="renderSongs()">
+          </div>
+          <div class="col-5">
+            <select id="sortSelect" class="form-select form-select-dark form-select-sm form-control-dark" onchange="renderSongs()">
+              <option value="newest">追加順</option>
+              <option value="title">曲名順</option>
+              <option value="artist">歌手順</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Operation Toolbar -->
+      <div id="batchToolbar" class="batch-toolbar">
+        <div class="d-flex align-items-center">
+          <input type="checkbox" id="selectAllCheckbox" class="song-checkbox" onchange="toggleSelectAll(this.checked)">
+          <span id="selectedCountText" class="small fw-bold">0件選択中</span>
+        </div>
+        <div class="d-flex gap-2">
+          <select id="batchPlaylistSelect" class="form-select form-select-sm form-control-dark" style="width: 130px;">
+            <option value="">追加先...</option>
+          </select>
+          <button class="btn btn-sm btn-danger" title="プレイリストへ追加" onclick="executeBatchAddToPlaylist()"><i class="fa-solid fa-plus"></i></button>
+          <button class="btn btn-sm btn-outline-danger" title="削除" onclick="executeBatchDelete()"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>
+
+      <!-- File Import Drop Zone -->
+      <div class="glass-card mb-3">
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <i class="fa-solid fa-cloud-arrow-up text-danger mb-2" style="font-size: 28px;"></i>
+          <div class="fw-bold small">楽曲ファイルを追加 (ドラッグ＆ドロップ対応)</div>
+          <div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A ファイルに対応</div>
+          <input type="file" id="fileInput" accept="audio/*" multiple style="display: none;" onchange="handleFileImport(this.files)">
+        </div>
+      </div>
+
+      <!-- Manual Song Import Form -->
+      <div class="glass-card mb-3">
+        <div class="row g-2">
+          <div class="col-5">
+            <input type="text" id="inputTitle" class="form-control form-control-dark form-control-sm" placeholder="曲名">
+          </div>
+          <div class="col-4">
+            <input type="text" id="inputArtist" class="form-control form-control-dark form-control-sm" placeholder="アーティスト">
+          </div>
+          <div class="col-3">
+            <button class="btn btn-sm btn-danger w-100" onclick="addNewManualSong()"><i class="fa-solid fa-plus me-1"></i>追加</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Song List Container -->
+      <ul id="songListContainer" class="song-list"></ul>
+    </div>
+
+    <!-- PLAYLISTS TAB CONTENT -->
+    <div id="playlistsTabContent" style="display: none;">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold m-0">マイプレイリスト</h5>
+        <button class="btn btn-sm btn-danger rounded-pill" onclick="openCreatePlaylistModal()">
+          <i class="fa-solid fa-plus me-1"></i>新規作成
+        </button>
+      </div>
+
+      <div id="playlistGrid" class="playlist-grid"></div>
+    </div>
+
+  </div>
+
+  <!-- Persistent Player Bar (Mini Player) -->
+  <div class="player-bar">
+    <div class="mini-progress-container" onclick="seekMiniPlayer(event)">
+      <div class="mini-progress-bar" id="miniProgressBar"></div>
+    </div>
+    <div class="player-mini-info" onclick="openFullPlayer()">
+      <div class="player-mini-cover" id="playerMiniCover">
+        <i class="fa-solid fa-music text-secondary"></i>
+      </div>
+      <div class="player-mini-details">
+        <div class="player-mini-title" id="playerMiniTitle">未再生</div>
+        <div class="player-mini-artist" id="playerMiniArtist">楽曲を選択してください</div>
+      </div>
+    </div>
+    <div class="player-controls">
+      <button id="miniShuffleBtn" onclick="toggleShuffle()" title="シャッフル"><i class="fa-solid fa-shuffle"></i></button>
+      <button class="btn-play" onclick="togglePlay()"><i class="fa-solid fa-play" id="miniPlayBtnIcon"></i></button>
+      <button onclick="playNext()" title="次の曲"><i class="fa-solid fa-forward"></i></button>
+      <button id="miniRepeatBtn" onclick="toggleRepeat()" title="リピート"><i class="fa-solid fa-repeat"></i></button>
+    </div>
+  </div>
+
+  <!-- Fullscreen Expand Player Modal -->
+  <div id="fullPlayerModal" class="full-player-modal">
+    <div class="full-player-header">
+      <button class="btn-action-icon" onclick="closeFullPlayer()"><i class="fa-solid fa-chevron-down"></i></button>
+      <span class="small text-muted fw-bold">再生中</span>
+      <button class="btn-action-icon" onclick="openCurrentPlaylistModal()"><i class="fa-solid fa-list-ul"></i></button>
+    </div>
+
+    <div class="full-player-cover-container" id="fullPlayerCover">
+      <i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>
+    </div>
+
+    <div class="full-player-info">
+      <div class="full-player-title" id="fullPlayerTitle">未再生</div>
+      <div class="full-player-artist" id="fullPlayerArtist">楽曲を選択してください</div>
+    </div>
+
+    <div class="seek-slider-container">
+      <input type="range" id="fullSeekSlider" class="seek-slider" min="0" max="100" value="0" oninput="onSeekSliderChange(this.value)">
+      <div class="time-stamps">
+        <span id="currentTimeText">0:00</span>
+        <span id="durationTimeText">0:00</span>
+      </div>
+    </div>
+
+    <div class="full-controls">
+      <button id="fullShuffleBtn" onclick="toggleShuffle()"><i class="fa-solid fa-shuffle"></i></button>
+      <button onclick="playPrev()"><i class="fa-solid fa-backward"></i></button>
+      <button class="btn-main-play" onclick="togglePlay()"><i class="fa-solid fa-circle-play" id="fullPlayBtnIcon"></i></button>
+      <button onclick="playNext()"><i class="fa-solid fa-forward"></i></button>
+      <button id="fullRepeatBtn" onclick="toggleRepeat()"><i class="fa-solid fa-repeat"></i></button>
+    </div>
+
+    <div class="volume-container">
+      <i class="fa-solid fa-volume-low"></i>
+      <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1" oninput="setVolume(this.value)">
+      <i class="fa-solid fa-volume-high"></i>
+    </div>
+  </div>
+
+  <!-- Audio Element -->
+  <audio id="audioPlayer" ontimeupdate="updateProgress()" onended="handleSongEnd()"></audio>
+
+  <!-- Modal: Create Playlist -->
+  <div class="modal fade" id="createPlaylistModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-modal">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold">新規プレイリスト</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="newPlaylistNameInput" class="form-control form-control-dark" placeholder="プレイリスト名">
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-outline-light rounded-pill" data-bs-dismiss="modal">キャンセル</button>
+          <button type="button" class="btn btn-sm btn-danger rounded-pill" onclick="saveNewPlaylist()">作成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Playlist Detail -->
+  <div class="modal fade" id="playlistDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content glass-modal">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold" id="playlistDetailTitle">プレイリスト詳細</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <ul id="playlistSongListContainer" class="song-list"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings -->
+  <div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-modal">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold">設定 & データ管理</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted">データベース状態: IndexedDB 正常同期中</p>
+          <button class="btn btn-sm btn-outline-danger w-100 mb-2" onclick="clearAllData()">すべてのデータを初期化</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Modules & Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    /* ==========================================
+       1. Database Architecture (IndexedDB)
+       ========================================== */
+    const DB_NAME = 'AppleMusicPWADB_Full';
+    const DB_VERSION = 1;
+    let db;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          db = e.target.result;
+          if (!db.objectStoreNames.contains('songs')) {
+            db.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
+          }
+          if (!db.objectStoreNames.contains('playlists')) {
+            db.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
+          }
+        };
+        request.onsuccess = (e) => {
+          db = e.target.result;
+          resolve();
+        };
+        request.onerror = (e) => reject(e);
+      });
+    }
+
+    /* ==========================================
+       2. Application State Management
+       ========================================== */
+    let songsData = [];
+    let playlistsData = [];
+    let activeTab = 'songs';
+    let isBatchMode = false;
+    let selectedSongIds = new Set();
+    
+    // Playback State
+    let currentPlayingIndex = -1;
+    let isShuffle = false;
+    let repeatMode = 'OFF'; // 'OFF' | 'ALL' | 'ONE'
+    let currentAudioUrl = null;
+
+    /* ==========================================
+       3. Lifecycle & Initialization
+       ========================================== */
+    window.addEventListener('DOMContentLoaded', async () => {
+      await initDB();
+      await loadSongsFromDB();
+      await loadPlaylistsFromDB();
+      setupDragAndDrop();
+      populatePlaylistDropdown();
+      renderSongs();
+      renderPlaylists();
+    });
+
+    /* ==========================================
+       4. DB Sync Functions
+       ========================================== */
+    async function loadSongsFromDB() {
+      return new Promise((resolve) => {
+        const tx = db.transaction('songs', 'readonly');
+        const store = tx.objectStore('songs');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          songsData = req.result || [];
+          resolve();
+        };
+      });
+    }
+
+    async function loadPlaylistsFromDB() {
+      return new Promise((resolve) => {
+        const tx = db.transaction('playlists', 'readonly');
+        const store = tx.objectStore('playlists');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          playlistsData = req.result || [];
+          if (playlistsData.length === 0) {
+            // Preset Default Playlists
+            playlistsData = [
+              { id: 1, name: 'お気に入り', songIds: [] },
+              { id: 2, name: 'ドライブ', songIds: [] }
+            ];
+            playlistsData.forEach(p => savePlaylistToDB(p));
+          }
+          resolve();
+        };
+      });
+    }
+
+    async function saveSongToDB(song) {
+      return new Promise((resolve) => {
+        const tx = db.transaction('songs', 'readwrite');
+        const store = tx.objectStore('songs');
+        const req = store.add(song);
+        req.onsuccess = () => {
+          song.id = req.result;
+          resolve(song);
+        };
+      });
+    }
+
+    async function deleteSongFromDB(id) {
+      return new Promise((resolve) => {
+        const tx = db.transaction('songs', 'readwrite');
+        const store = tx.objectStore('songs');
+        store.delete(id).onsuccess = () => resolve();
+      });
+    }
+
+    async function savePlaylistToDB(playlist) {
+      return new Promise((resolve) => {
+        const tx = db.transaction('playlists', 'readwrite');
+        const store = tx.objectStore('playlists');
+        store.put(playlist).onsuccess = () => resolve();
+      });
+    }
+
+    /* ==========================================
+       5. UI Navigation & Rendering
+       ========================================== */
+    function switchTab(tab) {
+      activeTab = tab;
+      document.getElementById('tabSongsBtn').classList.toggle('active', tab === 'songs');
+      document.getElementById('tabPlaylistsBtn').classList.toggle('active', tab === 'playlists');
+
+      document.getElementById('songsTabContent').style.display = tab === 'songs' ? 'block' : 'none';
+      document.getElementById('playlistsTabContent').style.display = tab === 'playlists' ? 'block' : 'none';
+    }
+
+    function renderSongs() {
+      const container = document.getElementById('songListContainer');
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+      const sortBy = document.getElementById('sortSelect').value;
+
+      let filtered = songsData.filter(s => 
+        s.title.toLowerCase().includes(searchQuery) || 
+        s.artist.toLowerCase().includes(searchQuery)
+      );
+
+      if (sortBy === 'title') {
+        filtered.sort((a, b) => a.title.localeCompare(b.title));
+      } else if (sortBy === 'artist') {
+        filtered.sort((a, b) => a.artist.localeCompare(b.artist));
+      } else {
+        filtered.sort((a, b) => b.id - a.id);
+      }
+
+      container.innerHTML = '';
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<li class="text-center text-muted py-5 small">楽曲が見つかりません</li>`;
+        return;
+      }
+
+      filtered.forEach(song => {
+        const li = document.createElement('li');
+        const isPlaying = currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === song.id;
+        li.className = `song-item ${isPlaying ? 'active' : ''}`;
+
+        const isChecked = selectedSongIds.has(song.id);
+
+        li.innerHTML = `
+          ${isBatchMode ? `<input type="checkbox" class="song-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelectSong(${song.id})">` : ''}
+          <div class="song-cover" onclick="playSongById(${song.id})">
+            ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
+          </div>
+          <div class="song-details" onclick="${isBatchMode ? `toggleSelectSong(${song.id})` : `playSongById(${song.id})`}">
+            <div class="song-title">${escapeHtml(song.title)}</div>
+            <div class="song-artist">${escapeHtml(song.artist)}</div>
+          </div>
+          <div class="song-actions">
+            <button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        `;
+        container.appendChild(li);
+      });
+
+      updateBatchToolbarUI();
+    }
+
+    function renderPlaylists() {
+      const container = document.getElementById('playlistGrid');
+      container.innerHTML = '';
+
+      playlistsData.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'playlist-card';
+        card.onclick = () => openPlaylistDetail(p.id);
+        card.innerHTML = `
+          <div class="playlist-cover-placeholder">
+            <i class="fa-solid fa-compact-disc"></i>
+          </div>
+          <div class="fw-bold text-truncate">${escapeHtml(p.name)}</div>
+          <div class="small text-muted">${p.songIds.length} 曲</div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    /* ==========================================
+       6. File Import & Processing
+       ========================================== */
+    function setupDragAndDrop() {
+      const zone = document.getElementById('dropZone');
+      zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      });
+      zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handleFileImport(e.dataTransfer.files);
+        }
+      });
+    }
+
+    async function handleFileImport(files) {
+      for (let file of files) {
+        if (!file.type.startsWith('audio/')) continue;
+
+        const title = file.name.replace(/\.[^/.]+$/, "");
+        const newSong = {
+          title: title,
+          artist: 'ローカルアーティスト',
+          audioBlob: file,
+          addedAt: Date.now()
+        };
+
+        const saved = await saveSongToDB(newSong);
+        songsData.unshift(saved);
+      }
+      renderSongs();
+    }
+
+    async function addNewManualSong() {
+      const titleInput = document.getElementById('inputTitle');
+      const artistInput = document.getElementById('inputArtist');
+
+      if (!titleInput.value.trim()) return alert('曲名を入力してください。');
+
+      const newSong = {
+        title: titleInput.value.trim(),
+        artist: artistInput.value.trim() || 'Unknown Artist',
+        addedAt: Date.now()
+      };
+
+      const saved = await saveSongToDB(newSong);
+      songsData.unshift(saved);
+
+      titleInput.value = '';
+      artistInput.value = '';
+      renderSongs();
+    }
+
+    /* ==========================================
+       7. Batch Operations Logic
+       ========================================== */
+    function toggleBatchMode() {
+      isBatchMode = !isBatchMode;
+      if (!isBatchMode) {
+        selectedSongIds.clear();
+      }
+      document.getElementById('batchToolbar').classList.toggle('active', isBatchMode);
+      renderSongs();
+    }
+
+    function toggleSelectSong(id) {
+      if (selectedSongIds.has(id)) {
+        selectedSongIds.delete(id);
+      } else {
+        selectedSongIds.add(id);
+      }
+      renderSongs();
+    }
+
+    function toggleSelectAll(checked) {
+      if (checked) {
+        songsData.forEach(s => selectedSongIds.add(s.id));
+      } else {
+        selectedSongIds.clear();
+      }
+      renderSongs();
+    }
+
+    function updateBatchToolbarUI() {
+      document.getElementById('selectedCountText').textContent = `${selectedSongIds.size}件選択中`;
+      document.getElementById('selectAllCheckbox').checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
+    }
+
+    async function executeBatchDelete() {
+      if (selectedSongIds.size === 0) return alert('削除対象を選択してください。');
+      
+      if (confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) {
+        for (let id of selectedSongIds) {
+          await deleteSongFromDB(id);
+        }
+        songsData = songsData.filter(s => !selectedSongIds.has(s.id));
+        selectedSongIds.clear();
+        renderSongs();
+      }
+    }
+
+    async function deleteSingleSong(id) {
+      if (confirm('この楽曲を削除しますか？')) {
+        await deleteSongFromDB(id);
+        songsData = songsData.filter(s => s.id !== id);
+        renderSongs();
+      }
+    }
+
+    async function executeBatchAddToPlaylist() {
+      const playlistId = parseInt(document.getElementById('batchPlaylistSelect').value);
+      if (!playlistId) return alert('追加先のプレイリストを選択してください。');
+      if (selectedSongIds.size === 0) return alert('対象の楽曲を選択してください。');
+
+      const playlist = playlistsData.find(p => p.id === playlistId);
+      if (playlist) {
+        selectedSongIds.forEach(id => {
+          if (!playlist.songIds.includes(id)) {
+            playlist.songIds.push(id);
+          }
+        });
+        await savePlaylistToDB(playlist);
+        alert(`${selectedSongIds.size} 件の楽曲を 「${playlist.name}」 に追加しました。`);
+        selectedSongIds.clear();
+        toggleBatchMode();
+        renderPlaylists();
+      }
+    }
+
+    function populatePlaylistDropdown() {
+      const select = document.getElementById('batchPlaylistSelect');
+      select.innerHTML = `<option value="">追加先...</option>`;
+      playlistsData.forEach(p => {
+        select.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+      });
+    }
+
+    /* ==========================================
+       8. Playback Engine Core & Modes
+       ========================================== */
+    function playSongById(id) {
+      const index = songsData.findIndex(s => s.id === id);
+      if (index === -1) return;
+      
+      currentPlayingIndex = index;
+      const song = songsData[index];
+
+      const audioPlayer = document.getElementById('audioPlayer');
+
+      if (currentAudioUrl) {
+        URL.revokeObjectURL(currentAudioUrl);
+      }
+
+      if (song.audioBlob) {
+        currentAudioUrl = URL.createObjectURL(song.audioBlob);
+        audioPlayer.src = currentAudioUrl;
+      } else {
+        audioPlayer.removeAttribute('src');
+      }
+
+      // Update Mini Player UI
+      document.getElementById('playerMiniTitle').textContent = song.title;
+      document.getElementById('playerMiniArtist').textContent = song.artist;
+      document.getElementById('miniPlayBtnIcon').className = 'fa-solid fa-pause';
+
+      // Update Full Player UI
+      document.getElementById('fullPlayerTitle').textContent = song.title;
+      document.getElementById('fullPlayerArtist').textContent = song.artist;
+      document.getElementById('fullPlayBtnIcon').className = 'fa-solid fa-circle-pause';
+
+      if (song.audioBlob) {
+        audioPlayer.play().catch(() => {});
+      }
+
+      setupMediaSession(song);
+      renderSongs();
+    }
+
+    function togglePlay() {
+      const audioPlayer = document.getElementById('audioPlayer');
+      const miniIcon = document.getElementById('miniPlayBtnIcon');
+      const fullIcon = document.getElementById('fullPlayBtnIcon');
+
+      if (currentPlayingIndex === -1 && songsData.length > 0) {
+        playSongById(songsData[0].id);
+        return;
+      }
+
+      if (audioPlayer.paused && audioPlayer.src) {
+        audioPlayer.play();
+        miniIcon.className = 'fa-solid fa-pause';
+        fullIcon.className = 'fa-solid fa-circle-pause';
+      } else {
+        audioPlayer.pause();
+        miniIcon.className = 'fa-solid fa-play';
+        fullIcon.className = 'fa-solid fa-circle-play';
+      }
+    }
+
+    function toggleShuffle() {
+      isShuffle = !isShuffle;
+      document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
+      document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
+    }
+
+    function toggleRepeat() {
+      const miniBtn = document.getElementById('miniRepeatBtn');
+      const fullBtn = document.getElementById('fullRepeatBtn');
+
+      if (repeatMode === 'OFF') {
+        repeatMode = 'ALL';
+        miniBtn.classList.add('active');
+        fullBtn.classList.add('active');
+      } else if (repeatMode === 'ALL') {
+        repeatMode = 'ONE';
+      } else {
+        repeatMode = 'OFF';
+        miniBtn.classList.remove('active');
+        fullBtn.classList.remove('active');
+      }
+    }
+
+    function playNext() {
+      if (songsData.length === 0) return;
+
+      if (isShuffle) {
+        let nextIndex = Math.floor(Math.random() * songsData.length);
+        if (songsData.length > 1 && nextIndex === currentPlayingIndex) {
+          nextIndex = (nextIndex + 1) % songsData.length;
+        }
+        currentPlayingIndex = nextIndex;
+      } else {
+        currentPlayingIndex = (currentPlayingIndex + 1) % songsData.length;
+      }
+
+      playSongById(songsData[currentPlayingIndex].id);
+    }
+
+    function playPrev() {
+      if (songsData.length === 0) return;
+      currentPlayingIndex = (currentPlayingIndex - 1 + songsData.length) % songsData.length;
+      playSongById(songsData[currentPlayingIndex].id);
+    }
+
+    function handleSongEnd() {
+      if (repeatMode === 'ONE') {
+        playSongById(songsData[currentPlayingIndex].id);
+      } else if (repeatMode === 'ALL' || isShuffle || currentPlayingIndex < songsData.length - 1) {
+        playNext();
+      } else {
+        document.getElementById('miniPlayBtnIcon').className = 'fa-solid fa-play';
+        document.getElementById('fullPlayBtnIcon').className = 'fa-solid fa-circle-play';
+      }
+    }
+
+    function updateProgress() {
+      const audio = document.getElementById('audioPlayer');
+      if (!audio.duration) return;
+
+      const pct = (audio.currentTime / audio.duration) * 100;
+      document.getElementById('miniProgressBar').style.width = pct + '%';
+      document.getElementById('fullSeekSlider').value = pct;
+
+      document.getElementById('currentTimeText').textContent = formatTime(audio.currentTime);
+      document.getElementById('durationTimeText').textContent = formatTime(audio.duration);
+    }
+
+    function onSeekSliderChange(val) {
+      const audio = document.getElementById('audioPlayer');
+      if (audio.duration) {
+        audio.currentTime = (val / 100) * audio.duration;
+      }
+    }
+
+    function seekMiniPlayer(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const pct = clickX / rect.width;
+      const audio = document.getElementById('audioPlayer');
+      if (audio.duration) {
+        audio.currentTime = pct * audio.duration;
+      }
+    }
+
+    function setVolume(val) {
+      document.getElementById('audioPlayer').volume = val;
+    }
+
+    /* ==========================================
+       9. Modal Window Controllers
+       ========================================== */
+    function openFullPlayer() {
+      document.getElementById('fullPlayerModal').classList.add('active');
+    }
+
+    function closeFullPlayer() {
+      document.getElementById('fullPlayerModal').classList.remove('active');
+    }
+
+    function openCreatePlaylistModal() {
+      new bootstrap.Modal(document.getElementById('createPlaylistModal')).show();
+    }
+
+    async function saveNewPlaylist() {
+      const nameInput = document.getElementById('newPlaylistNameInput');
+      if (!nameInput.value.trim()) return alert('名前を入力してください');
+
+      const newPlaylist = {
+        id: Date.now(),
+        name: nameInput.value.trim(),
+        songIds: []
+      };
+
+      playlistsData.push(newPlaylist);
+      await savePlaylistToDB(newPlaylist);
+      populatePlaylistDropdown();
+      renderPlaylists();
+
+      bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
+      nameInput.value = '';
+    }
+
+    function openPlaylistDetail(id) {
+      const playlist = playlistsData.find(p => p.id === id);
+      if (!playlist) return;
+
+      document.getElementById('playlistDetailTitle').textContent = playlist.name;
+      const container = document.getElementById('playlistSongListContainer');
+      container.innerHTML = '';
+
+      const pSongs = songsData.filter(s => playlist.songIds.includes(s.id));
+
+      if (pSongs.length === 0) {
+        container.innerHTML = `<li class="text-center text-muted py-4 small">楽曲が含まれていません</li>`;
+      } else {
+        pSongs.forEach(song => {
+          const li = document.createElement('li');
+          li.className = 'song-item';
+          li.innerHTML = `
+            <div class="song-cover" onclick="playSongById(${song.id})">
+              <i class="fa-solid fa-music text-secondary"></i>
+            </div>
+            <div class="song-details" onclick="playSongById(${song.id})">
+              <div class="song-title">${escapeHtml(song.title)}</div>
+              <div class="song-artist">${escapeHtml(song.artist)}</div>
+            </div>
+          `;
+          container.appendChild(li);
+        });
+      }
+
+      new bootstrap.Modal(document.getElementById('playlistDetailModal')).show();
+    }
+
+    function openSettingsModal() {
+      new bootstrap.Modal(document.getElementById('settingsModal')).show();
+    }
+
+    async function clearAllData() {
+      if (confirm('すべてのデータおよび楽曲ライブラリを消去しますか？')) {
+        const tx = db.transaction(['songs', 'playlists'], 'readwrite');
+        tx.objectStore('songs').clear();
+        tx.objectStore('playlists').clear();
+        songsData = [];
+        playlistsData = [];
+        renderSongs();
+        renderPlaylists();
+        alert('データを初期化しました。');
+      }
+    }
+
+    /* ==========================================
+       10. Native Utilities & Media Session
+       ========================================== */
+    function setupMediaSession(song) {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: song.title,
+          artist: song.artist,
+          album: 'Apple Music PWA'
+        });
+
+        navigator.mediaSession.setActionHandler('play', togglePlay);
+        navigator.mediaSession.setActionHandler('pause', togglePlay);
+        navigator.mediaSession.setActionHandler('nexttrack', playNext);
+        navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+      }
+    }
+
+    function formatTime(sec) {
+      if (isNaN(sec)) return '0:00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+  </script>
+</body>
+</html>
