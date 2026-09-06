@@ -944,19 +944,19 @@ if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : '
 if (tab === 'playlists') renderPlaylists();
 }
 function openCurrentPlaylistModal() {
-  const modal = document.getElementById('currentPlaylistModal');
-  
-  if (modal) {
-    modal.style.display = 'block';
-    if (typeof renderCurrentQueue === 'function') {
-      renderCurrentQueue();
-    }
-  } else {
-    if (typeof closeFullscreenPlayer === 'function') {
-      closeFullscreenPlayer();
-    }
-    switchTab('songs');
-  }
+const modal = document.getElementById('currentPlaylistModal');
+
+if (modal) {
+modal.style.display = 'block';
+if (typeof renderCurrentQueue === 'function') {
+renderCurrentQueue();
+}
+} else {
+if (typeof closeFullscreenPlayer === 'function') {
+closeFullscreenPlayer();
+}
+switchTab('songs');
+}
 }
 function renderSongs() {
 const container = document.getElementById('songListContainer');
