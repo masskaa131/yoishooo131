@@ -492,25 +492,31 @@ transition: width 0.1s linear;
 /* ==========================================
 6. Fullscreen Expand Player Modal
 ========================================== */
+/* ==========================================
+6. Fullscreen Expand Player Modal
+========================================== */
 .full-player-modal {
-position: fixed;
-top: 100%;
-left: 0;
-right: 0;
-bottom: 0;
-background: rgba(15, 15, 18, 0.96);
-backdrop-filter: blur(40px);
--webkit-backdrop-filter: blur(40px);
-z-index: 300;
-transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
-display: flex;
-flex-direction: column;
-padding: 24px;
-overflow-y: auto;
+  position: fixed;
+  top: 100%;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 15, 18, 0.96);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  z-index: 300;
+  transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+  /* ▼ ここに移動・統合 */
+  overflow: hidden;
+  transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1), background-color 0.8s ease;
 }
 
 .full-player-modal.active {
-top: 0;
+  top: 0;
 }
 
 .full-player-header {
@@ -666,13 +672,6 @@ border: none;
 color: var(--text-main);
 font-size: 24px;
 cursor: pointer;
-}
-
-  /* 動的アンビエント背景のスタイル */
-.full-player-modal {
-  position: relative;
-  overflow: hidden;
-  transition: background-color 0.8s ease;
 }
 
 /* ジャケットの色を元にふんわり光る背景エフェクト */
