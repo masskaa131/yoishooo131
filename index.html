@@ -721,21 +721,6 @@ to { opacity: 1; transform: translateY(0); }
 </div>
 </div>
 
-<!-- Manual Song Import Form -->
-<div class="glass-card mb-3">
-<div class="row g-2">
-<div class="col-5">
-<input type="text" id="inputTitle" class="form-control form-control-dark form-control-sm" placeholder="曲名">
-</div>
-<div class="col-4">
-<input type="text" id="inputArtist" class="form-control form-control-dark form-control-sm" placeholder="アーティスト">
-</div>
-<div class="col-3">
-<button class="btn btn-sm btn-danger w-100" onclick="addNewManualSong()"><i class="fa-solid fa-plus me-1"></i>追加</button>
-</div>
-</div>
-</div>
-
 <!-- Song List Container -->
 <ul id="songListContainer" class="song-list"></ul>
 </div>
@@ -989,14 +974,14 @@ return new Promise((resolve) => {
 const tx = db.transaction('playlists', 'readonly');
 const store = tx.objectStore('playlists');
 const req = store.getAll();
-req.onsuccess = () => {
+req.onsuccess = async () => {
 playlistsData = req.result || [];
 if (playlistsData.length === 0) {
-playlistsData = [
-{ id: 1, name: 'お気に入り', coverUrl: '', songIds: [] },
-{ id: 2, name: 'ドライブ', coverUrl: '', songIds: [] }
-];
-playlistsData.forEach(p => savePlaylistToDB(p));
+const p1 = { name: 'お気に入り', coverUrl: '', songIds: [] };
+const p2 = { name: 'ドライブ', coverUrl: '', songIds: [] };
+await savePlaylistToDB(p1);
+await savePlaylistToDB(p2);
+playlistsData = [p1, p2];
 }
 resolve();
 };
@@ -1004,7 +989,7 @@ resolve();
 }
 
 async function saveSongToDB(song) {
-return new Promise((resolve) => {
+return new Promise((resolve, reject) => {
 const tx = db.transaction('songs', 'readwrite');
 const store = tx.objectStore('songs');
 const req = store.add(song);
@@ -1012,6 +997,7 @@ req.onsuccess = () => {
 song.id = req.result;
 resolve(song);
 };
+req.onerror = (e) => reject(e);
 });
 }
 
@@ -1024,16 +1010,29 @@ store.delete(id).onsuccess = () => resolve();
 }
 
 async function savePlaylistToDB(playlist) {
-return new Promise((resolve) => {
+return new Promise((resolve, reject) => {
 const tx = db.transaction('playlists', 'readwrite');
 const store = tx.objectStore('playlists');
-store.put(playlist).onsuccess = () => resolve();
+const req = store.add(playlist);
+req.onsuccess = () => {
+playlist.id = req.result;
+resolve(playlist);
+};
+req.onerror = (e) => reject(e);
 });
 }
 
 /* ==========================================
 5. UI Navigation & Rendering
 ========================================== */
+function hideBootstrapModal(modalId) {
+const el = document.getElementById(modalId);
+if (el) {
+const modal = bootstrap.Modal.getOrCreateInstance(el);
+modal.hide();
+}
+}
+
 function switchTab(tab) {
   activeTab = tab;
 
@@ -1193,8 +1192,10 @@ resolve(fallbackData);
 return;
 }
 
+try {
 window.jsmediatags.read(file, {
 onSuccess: function(tag) {
+try {
 const tags = tag.tags;
 const title = tags.title ? tags.title.trim() : defaultTitle;
 const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
@@ -1208,20 +1209,28 @@ base64String += String.fromCharCode(data[i]);
 }
 coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
 }
-
 resolve({ title, artist, coverUrl });
+} catch(e) {
+resolve(fallbackData);
+}
 },
 onError: function() {
 resolve(fallbackData);
 }
 });
+} catch(e) {
+resolve(fallbackData);
+}
 });
 }
 
 async function handleFileImport(files) {
+if (!files || files.length === 0) return;
 let addedCount = 0;
 
-for (let file of files) {
+for (let i = 0; i < files.length; i++) {
+const file = files[i];
+try {
 const isAudioType = file.type.startsWith('audio/') || file.type === '';
 const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
 
@@ -1240,6 +1249,9 @@ addedAt: Date.now()
 const saved = await saveSongToDB(newSong);
 songsData.unshift(saved);
 addedCount++;
+} catch (err) {
+console.error("ファイル追加エラー:", err);
+}
 }
 
 if (addedCount > 0) {
@@ -1248,36 +1260,8 @@ renderSongs();
 alert('対応している音声ファイルが見つかりませんでした。');
 }
 
-document.getElementById('fileInput').value = '';
-}
-
-async function addNewManualSong() {
-const titleInput = document.getElementById('inputTitle');
-const artistInput = document.getElementById('inputArtist');
-
-const title = titleInput.value.trim();
-const artist = artistInput.value.trim() || '不明なアーティスト';
-
-if (!title) {
-alert('曲名を入力してください。');
-return;
-}
-
-const newSong = {
-title: title,
-artist: artist,
-coverUrl: null,
-audioBlob: null,
-addedAt: Date.now()
-};
-
-const saved = await saveSongToDB(newSong);
-songsData.unshift(saved);
-
-titleInput.value = '';
-artistInput.value = '';
-
-renderSongs();
+const fileInput = document.getElementById('fileInput');
+if (fileInput) fileInput.value = '';
 }
 
 async function deleteSingleSong(id) {
@@ -1402,7 +1386,10 @@ const playlist = playlistsData.find(p => p.id === playlistId);
 if (playlist) {
 const newIds = Array.from(selectedSongIds);
 playlist.songIds = Array.from(new Set([...(playlist.songIds || []), ...newIds]));
-await savePlaylistToDB(playlist);
+
+const tx = db.transaction('playlists', 'readwrite');
+await tx.objectStore('playlists').put(playlist);
+
 alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
 selectedSongIds.clear();
 toggleBatchMode();
@@ -1692,7 +1679,8 @@ document.getElementById('fullPlayerModal').classList.remove('active');
 }
 
 function openCreatePlaylistModal() {
-const modal = new bootstrap.Modal(document.getElementById('createPlaylistModal'));
+const el = document.getElementById('createPlaylistModal');
+const modal = bootstrap.Modal.getOrCreateInstance(el);
 modal.show();
 }
 
@@ -1721,15 +1709,20 @@ const newPlaylist = {
   songIds: []
 };
 
-await savePlaylistToDB(newPlaylist);
-await loadPlaylistsFromDB();
+try {
+  await savePlaylistToDB(newPlaylist);
+  await loadPlaylistsFromDB();
 
-nameInput.value = '';
-if (coverInput) coverInput.value = '';
+  nameInput.value = '';
+  if (coverInput) coverInput.value = '';
 
-bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
-populatePlaylistDropdown();
-renderPlaylists();
+  hideBootstrapModal('createPlaylistModal');
+  populatePlaylistDropdown();
+  renderPlaylists();
+} catch (e) {
+  console.error("プレイリスト作成エラー:", e);
+  alert("プレイリストの作成に失敗しました。");
+}
 }
 
 function openPlaylistDetail(id) {
@@ -1761,7 +1754,8 @@ container.appendChild(li);
 });
 }
 
-const modal = new bootstrap.Modal(document.getElementById('playlistDetailModal'));
+const el = document.getElementById('playlistDetailModal');
+const modal = bootstrap.Modal.getOrCreateInstance(el);
 modal.show();
 }
 
@@ -1807,7 +1801,8 @@ function closeCurrentPlaylistModal() {
 }
 
 function openSettingsModal() {
-const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+const el = document.getElementById('settingsModal');
+const modal = bootstrap.Modal.getOrCreateInstance(el);
 modal.show();
 }
 
@@ -1826,7 +1821,7 @@ playlistsData = [];
 renderSongs();
 renderPlaylists();
 
-bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+hideBootstrapModal('settingsModal');
 alert('すべてのデータを削除しました。');
 }
 
