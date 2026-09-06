@@ -992,6 +992,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadPlaylistsFromDB();
     setupDragAndDrop();
     setupAudioErrorHandling();
+    
+    // ▼【ここに追加】アプリ起動時にaudio要素のピッチを固定
+    const audio = document.getElementById('audioPlayer');
+    if (audio) {
+      audio.preservesPitch = true;
+      audio.webkitPreservesPitch = true;
+      audio.mozPreservesPitch = true;
+    }
+
     populatePlaylistDropdown();
     renderSongs();
     renderPlaylists();
@@ -999,6 +1008,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.error("初期化エラー:", err);
   }
 });
+
+  
 
 /* ==========================================
 4. DB Sync Functions
@@ -1522,6 +1533,11 @@ function playSongAtIndex(index) {
   if (song.audioBlob) {
     currentAudioUrl = URL.createObjectURL(song.audioBlob);
     audio.src = currentAudioUrl;
+    
+    // ▼【ここに追加】曲が変わるたびに再生速度とピッチのズレを強制リセット
+    audio.playbackRate = 1.0;
+    audio.defaultPlaybackRate = 1.0;
+
     initWebAudio();
     audio.play().catch(e => console.error(e));
   } else {
