@@ -617,8 +617,8 @@ to { opacity: 1; transform: translateY(0); }
 
 <!-- Navigation Tabs -->
 <div class="nav-tabs-custom">
-<button class="tab-btn active" data-tab="songs" onclick="switchTab('songs')">すべての曲</button>
-<button class="tab-btn" data-tab="playlists" onclick="switchTab('playlists')">プレイリスト</button>
+  <button class="nav-tab-btn active" data-tab="songs" onclick="switchTab('songs')">すべての曲</button>
+  <button class="nav-tab-btn" data-tab="playlists" onclick="switchTab('playlists')">プレイリスト</button>
 </div>
 
 <!-- SONGS TAB CONTENT -->
@@ -1585,11 +1585,10 @@ modal.show();
 
 // 再生画面のリストボタン押下時の処理
 function openCurrentPlaylistModal() {
-// 例: プレイリストタブに切り替えてフルスクリーンプレイヤーを閉じる場合
-switchTab('playlists');
-if (typeof closeFullscreenPlayer === 'function') {
-closeFullscreenPlayer();
-}
+  switchTab('playlists');
+  if (typeof closeFullPlayer === 'function') {
+    closeFullPlayer();
+  }
 }
 function openSettingsModal() {
 const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
@@ -1633,12 +1632,12 @@ return str.replace(/&/g, '&amp;')
 
 // 音量スライダーの連動処理
 const audio = document.getElementById('audioPlayer');
+// 重複・誤計算を避けるため、HTMLの oninput="setVolume(this.value)" に一本化するか、イベントリスナーを修正
 const volumeSlider = document.getElementById('volumeSlider');
-
 if (volumeSlider && audio) {
-volumeSlider.addEventListener('input', (e) => {
-audio.volume = e.target.value / 100;
-});
+  volumeSlider.addEventListener('input', (e) => {
+    audio.volume = parseFloat(e.target.value); // /100 を削除
+  });
 }
 </script>
 </body>
