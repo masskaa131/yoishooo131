@@ -975,25 +975,51 @@
       updateBatchToolbarUI();
     }
 
-    function renderPlaylists() {
-      const container = document.getElementById('playlistGrid');
-      container.innerHTML = '';
+// プレイリスト一覧の描画（削除ボタンを追加）
+function renderPlaylists() {
+  const container = document.getElementById('playlistContainer');
+  if (!container) return;
+  container.innerHTML = '';
 
-      playlistsData.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'playlist-card';
-        card.onclick = () => openPlaylistDetail(p.id);
-        card.innerHTML = `
-          <div class="playlist-cover-placeholder">
-            <i class="fa-solid fa-compact-disc"></i>
-          </div>
-          <div class="fw-bold text-truncate">${escapeHtml(p.name)}</div>
-          <div class="small text-muted">${p.songIds.length} 曲</div>
-        `;
-        container.appendChild(card);
-      });
-    }
+  if (playlistsData.length === 0) {
+    container.innerHTML = '<div class="text-center text-muted py-4 small">プレイリストがありません</div>';
+    return;
+  }
 
+  playlistsData.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'card mb-2 p-3 d-flex flex-row justify-content-between align-items-center';
+    card.innerHTML = `
+      <div onclick="openPlaylistDetail(${p.id})" style="cursor: pointer; flex-grow: 1;">
+        <div class="fw-bold">${escapeHtml(p.name)}</div>
+        <div class="text-muted small">${p.songIds ? p.songIds.length : 0} 曲</div>
+      </div>
+      <button class="btn btn-outline-danger btn-sm ms-2" onclick="deletePlaylist(${p.id})">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+    // プレイリスト削除処理
+async function deletePlaylist(id) {
+  const playlist = playlistsData.find(p => p.id === id);
+  const name = playlist ? playlist.name : 'このプレイリスト';
+
+  if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
+
+  // IndexedDBから削除
+  const tx = db.transaction('playlists', 'readwrite');
+  tx.objectStore('playlists').delete(id);
+
+  // ローカルデータ更新
+  playlistsData = playlistsData.filter(p => p.id !== id);
+
+  // UI再描画
+  populatePlaylistDropdown();
+  renderPlaylists();
+}
 /* ==========================================
    6. File Import & Processing
    ========================================== */
