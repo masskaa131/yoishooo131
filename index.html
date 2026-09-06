@@ -604,45 +604,45 @@ box-shadow: none;
 }
 
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  z-index: 400;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
+position: fixed;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background: rgba(0, 0, 0, 0.75);
+backdrop-filter: blur(15px);
+-webkit-backdrop-filter: blur(15px);
+z-index: 400;
+display: flex;
+justify-content: center;
+align-items: flex-end;
 }
 
 .modal-overlay .modal-content {
-  background: var(--modal-glass);
-  border-top: 1px solid var(--border-glass);
-  border-radius: 20px 20px 0 0;
-  width: 100%;
-  max-height: 80vh;
-  padding: 20px;
-  overflow-y: auto;
+background: var(--modal-glass);
+border-top: 1px solid var(--border-glass);
+border-radius: 20px 20px 0 0;
+width: 100%;
+max-height: 80vh;
+padding: 20px;
+overflow-y: auto;
 }
 
 .modal-overlay .modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border-glass);
-  padding-bottom: 10px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 16px;
+border-bottom: 1px solid var(--border-glass);
+padding-bottom: 10px;
 }
 
 .modal-overlay .close-btn {
-  background: none;
-  border: none;
-  color: var(--text-main);
-  font-size: 24px;
-  cursor: pointer;
+background: none;
+border: none;
+color: var(--text-main);
+font-size: 24px;
+cursor: pointer;
 }
 
 @keyframes fadeIn {
@@ -890,13 +890,17 @@ to { opacity: 1; transform: translateY(0); }
 /* ==========================================
 1. Database Architecture (IndexedDB)
 ========================================== */
-const DB_NAME = 'AppleMusicPWADB_Full';
+const DB_NAME = 'AppleMusicPWADB_Full_v2';
 const DB_VERSION = 1;
 let db = null;
+let dbInitPromise = null;
 
 function initDB() {
-  return new Promise((resolve, reject) => {
+  if (dbInitPromise) return dbInitPromise;
+
+  dbInitPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
     request.onupgradeneeded = (e) => {
       const database = e.target.result;
       if (!database.objectStoreNames.contains('songs')) {
@@ -906,19 +910,28 @@ function initDB() {
         database.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
       }
     };
+    
     request.onsuccess = (e) => {
       db = e.target.result;
+      db.onversionchange = () => {
+        db.close();
+        db = null;
+      };
       resolve(db);
     };
-    request.onerror = (e) => reject(e);
+    
+    request.onerror = (e) => {
+      dbInitPromise = null;
+      reject(e.target?.error || new Error('IndexedDB open error'));
+    };
   });
+
+  return dbInitPromise;
 }
 
 async function ensureDB() {
-  if (!db) {
-    await initDB();
-  }
-  return db;
+  if (db) return db;
+  return await initDB();
 }
 
 /* ==========================================
@@ -934,7 +947,7 @@ let selectedSongIds = new Set();
 let audioCtx;
 let gainNode;
 let trackSource;
-  
+
 // Playback State
 let currentPlayingIndex = -1;
 let isShuffle = false;
@@ -965,9 +978,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 4. DB Sync Functions
 ========================================== */
 async function loadSongsFromDB() {
-  await ensureDB();
+  const database = await ensureDB();
   return new Promise((resolve) => {
-    const tx = db.transaction('songs', 'readonly');
+    const tx = database.transaction('songs', 'readonly');
     const store = tx.objectStore('songs');
     const req = store.getAll();
     req.onsuccess = () => {
@@ -982,9 +995,9 @@ async function loadSongsFromDB() {
 }
 
 async function loadPlaylistsFromDB() {
-  await ensureDB();
+  const database = await ensureDB();
   return new Promise((resolve) => {
-    const tx = db.transaction('playlists', 'readonly');
+    const tx = database.transaction('playlists', 'readonly');
     const store = tx.objectStore('playlists');
     const req = store.getAll();
     req.onsuccess = async () => {
@@ -992,9 +1005,13 @@ async function loadPlaylistsFromDB() {
       if (playlistsData.length === 0) {
         const p1 = { name: 'お気に入り', coverUrl: '', songIds: [] };
         const p2 = { name: 'ドライブ', coverUrl: '', songIds: [] };
-        await savePlaylistToDB(p1);
-        await savePlaylistToDB(p2);
-        playlistsData = [p1, p2];
+        try {
+          await savePlaylistToDB(p1);
+          await savePlaylistToDB(p2);
+          playlistsData = [p1, p2];
+        } catch (e) {
+          console.warn("初期プレイリスト保存をスキップ", e);
+        }
       }
       resolve();
     };
@@ -1006,39 +1023,39 @@ async function loadPlaylistsFromDB() {
 }
 
 async function saveSongToDB(song) {
-  await ensureDB();
+  const database = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('songs', 'readwrite');
+    const tx = database.transaction('songs', 'readwrite');
     const store = tx.objectStore('songs');
     const req = store.add(song);
     req.onsuccess = () => {
       song.id = req.result;
       resolve(song);
     };
-    req.onerror = (e) => reject(e);
+    req.onerror = (e) => reject(e.target?.error || e);
   });
 }
 
 async function deleteSongFromDB(id) {
-  await ensureDB();
+  const database = await ensureDB();
   return new Promise((resolve) => {
-    const tx = db.transaction('songs', 'readwrite');
+    const tx = database.transaction('songs', 'readwrite');
     const store = tx.objectStore('songs');
     store.delete(id).onsuccess = () => resolve();
   });
 }
 
 async function savePlaylistToDB(playlist) {
-  await ensureDB();
+  const database = await ensureDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('playlists', 'readwrite');
+    const tx = database.transaction('playlists', 'readwrite');
     const store = tx.objectStore('playlists');
     const req = store.add(playlist);
     req.onsuccess = () => {
       playlist.id = req.result;
       resolve(playlist);
     };
-    req.onerror = (e) => reject(e);
+    req.onerror = (e) => reject(e.target?.error || e);
   });
 }
 
@@ -1089,7 +1106,7 @@ function renderSongs() {
   } else if (sortBy === 'artist') {
     filtered.sort((a, b) => (a.artist || '').localeCompare(b.artist || ''));
   } else {
-    filtered.sort((a, b) => b.id - a.id);
+    filtered.sort((a, b) => (b.id || 0) - (a.id || 0));
   }
 
   container.innerHTML = '';
@@ -1164,8 +1181,8 @@ async function deletePlaylist(id) {
 
   if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
 
-  await ensureDB();
-  const tx = db.transaction('playlists', 'readwrite');
+  const database = await ensureDB();
+  const tx = database.transaction('playlists', 'readwrite');
   await tx.objectStore('playlists').delete(id);
 
   playlistsData = playlistsData.filter(p => p.id !== id);
@@ -1214,9 +1231,20 @@ function parseAudioMetadata(file) {
       return;
     }
 
+    let isResolved = false;
+    const timer = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        resolve(fallbackData);
+      }
+    }, 1500);
+
     try {
       window.jsmediatags.read(file, {
         onSuccess: function(tag) {
+          if (isResolved) return;
+          clearTimeout(timer);
+          isResolved = true;
           try {
             const tags = tag.tags;
             const title = tags.title ? tags.title.trim() : defaultTitle;
@@ -1237,11 +1265,18 @@ function parseAudioMetadata(file) {
           }
         },
         onError: function() {
+          if (isResolved) return;
+          clearTimeout(timer);
+          isResolved = true;
           resolve(fallbackData);
         }
       });
     } catch(e) {
-      resolve(fallbackData);
+      if (!isResolved) {
+        clearTimeout(timer);
+        isResolved = true;
+        resolve(fallbackData);
+      }
     }
   });
 }
@@ -1253,7 +1288,6 @@ async function handleFileImport(files) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     try {
-      // iOS環境での判定拒否を防ぐためファイルフィルタ制限を取り除き、読み込みを実行
       const meta = await parseAudioMetadata(file);
 
       const newSong = {
@@ -1268,7 +1302,7 @@ async function handleFileImport(files) {
       songsData.unshift(saved);
       addedCount++;
     } catch (err) {
-      console.error("ファイル追加エラー:", err);
+      console.error("ファイル保存エラー:", err);
     }
   }
 
@@ -1324,8 +1358,8 @@ async function saveSongEdit() {
     song.title = newTitle || '無題の楽曲';
     song.artist = newArtist || '不明なアーティスト';
 
-    await ensureDB();
-    const tx = db.transaction('songs', 'readwrite');
+    const database = await ensureDB();
+    const tx = database.transaction('songs', 'readwrite');
     await tx.objectStore('songs').put(song);
 
     renderSongs();
@@ -1407,8 +1441,8 @@ async function executeBatchAddToPlaylist() {
     const newIds = Array.from(selectedSongIds);
     playlist.songIds = Array.from(new Set([...(playlist.songIds || []), ...newIds]));
 
-    await ensureDB();
-    const tx = db.transaction('playlists', 'readwrite');
+    const database = await ensureDB();
+    const tx = database.transaction('playlists', 'readwrite');
     await tx.objectStore('playlists').put(playlist);
 
     alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
@@ -1716,8 +1750,6 @@ async function saveNewPlaylist() {
   }
 
   try {
-    await ensureDB();
-
     let coverUrl = '';
     if (coverInput && coverInput.files[0]) {
       try {
@@ -1745,7 +1777,8 @@ async function saveNewPlaylist() {
     renderPlaylists();
   } catch (e) {
     console.error("プレイリスト作成エラー:", e);
-    alert("プレイリストの作成に失敗しました: " + (e.message || e));
+    const msg = e?.message || (typeof e === 'string' ? e : 'データベース処理エラー');
+    alert("プレイリストの作成に失敗しました: " + msg);
   }
 }
 
@@ -1833,11 +1866,11 @@ function openSettingsModal() {
 async function clearAllData() {
   if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
 
-  await ensureDB();
-  const tx1 = db.transaction('songs', 'readwrite');
+  const database = await ensureDB();
+  const tx1 = database.transaction('songs', 'readwrite');
   tx1.objectStore('songs').clear();
 
-  const tx2 = db.transaction('playlists', 'readwrite');
+  const tx2 = database.transaction('playlists', 'readwrite');
   tx2.objectStore('playlists').clear();
 
   songsData = [];
@@ -1870,7 +1903,7 @@ function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
+    reader.onerror = (e) => reject(e);
     reader.readAsDataURL(file);
   });
 }
