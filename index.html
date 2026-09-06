@@ -1,1598 +1,1632 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Apple Music Like PWA Player</title>
-  <!-- MP3/音声メタデータ解析ライブラリ -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Apple Music Like PWA Player</title>
+<!-- MP3/音声メタデータ解析ライブラリ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
-  <!-- PWA & Web App Settings -->
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#000000">
-  
-  <!-- External CSS Libraries -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-
-  <style>
-    /* ==========================================
-       1. Global Styles & Theme Variables
-       ========================================== */
-    :root {
-      --bg-black: #000000;
-      --bg-glass: rgba(25, 25, 25, 0.78);
-      --card-glass: rgba(38, 38, 42, 0.65);
-      --card-glass-hover: rgba(55, 55, 60, 0.8);
-      --accent-color: #fa233b; /* Apple Music Red */
-      --accent-color-hover: #ff3b52;
-      --text-main: #ffffff;
-      --text-sub: #a1a1a6;
-      --border-glass: rgba(255, 255, 255, 0.12);
-      --modal-glass: rgba(30, 30, 32, 0.88);
-      --player-bg: rgba(18, 18, 20, 0.92);
-    }
-
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    body {
-      background-color: var(--bg-black);
-      color: var(--text-main);
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      padding-bottom: 140px;
-      user-select: none;
-      -webkit-user-select: none;
-      overflow-x: hidden;
-    }
-
-    /* Scrollbar Design */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.2);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.4);
-    }
-
-    /* Glassmorphism Utilities */
-    .glass-header {
-      background: var(--bg-glass);
-      backdrop-filter: blur(25px);
-      -webkit-backdrop-filter: blur(25px);
-      border-bottom: 1px solid var(--border-glass);
-    }
-
-    .glass-card {
-      background: var(--card-glass);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--border-glass);
-      border-radius: 16px;
-      padding: 16px;
-      transition: background 0.2s ease, transform 0.2s ease;
-    }
-
-    .glass-modal {
-      background: var(--modal-glass) !important;
-      backdrop-filter: blur(30px) !important;
-      -webkit-backdrop-filter: blur(30px) !important;
-      border: 1px solid var(--border-glass) !important;
-      color: var(--text-main);
-      border-radius: 20px;
-    }
-
-    /* ==========================================
-       2. Navigation & Header
-       ========================================== */
-    .app-header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      padding: 16px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .app-title {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      display: flex;
-      align-items: center;
-    }
-
-    .nav-tabs-custom {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--border-glass);
-      padding-bottom: 10px;
-    }
-
-    .nav-tab-btn {
-      background: none;
-      border: none;
-      color: var(--text-sub);
-      font-size: 16px;
-      font-weight: 600;
-      padding: 6px 16px;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .nav-tab-btn.active {
-      background: var(--accent-color);
-      color: #fff;
-    }
-
-    /* ==========================================
-       3. Batch Operation Toolbar
-       ========================================== */
-    .batch-toolbar {
-      display: none;
-      background: rgba(250, 35, 59, 0.15);
-      border: 1px solid var(--accent-color);
-      border-radius: 14px;
-      padding: 12px 18px;
-      margin-bottom: 16px;
-      align-items: center;
-      justify-content: space-between;
-      animation: fadeIn 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
-    }
-
-    .batch-toolbar.active {
-      display: flex;
-    }
-
-    /* ==========================================
-       4. Song & Playlist List Views
-       ========================================== */
-    .song-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .song-item {
-      display: flex;
-      align-items: center;
-      padding: 10px 14px;
-      border-radius: 14px;
-      margin-bottom: 8px;
-      transition: background 0.2s, border-color 0.2s;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid transparent;
-    }
-
-    .song-item:hover {
-      background: rgba(255, 255, 255, 0.07);
-    }
-
-    .song-item.active {
-      background: rgba(250, 35, 59, 0.18);
-      border-color: rgba(250, 35, 59, 0.4);
-    }
-
-    .song-checkbox {
-      width: 22px;
-      height: 22px;
-      margin-right: 14px;
-      accent-color: var(--accent-color);
-      cursor: pointer;
-    }
-
-    .song-cover {
-      width: 50px;
-      height: 50px;
-      border-radius: 10px;
-      object-fit: cover;
-      margin-right: 14px;
-      background: #2c2c2e;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      overflow: hidden;
-      cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    }
-
-    .song-cover img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .song-details {
-      flex: 1;
-      overflow: hidden;
-      cursor: pointer;
-    }
-
-    .song-title {
-      font-size: 15px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      color: var(--text-main);
-    }
-
-    .song-artist {
-      font-size: 13px;
-      color: var(--text-sub);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-
-    .song-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .btn-action-icon {
-      background: none;
-      border: none;
-      color: var(--text-sub);
-      font-size: 16px;
-      padding: 8px;
-      border-radius: 50%;
-      cursor: pointer;
-      transition: color 0.2s, background 0.2s;
-    }
-
-    .btn-action-icon:hover {
-      color: #fff;
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    /* Playlist Grid */
-    .playlist-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 16px;
-    }
-
-    .playlist-card {
-      background: var(--card-glass);
-      border: 1px solid var(--border-glass);
-      border-radius: 16px;
-      padding: 14px;
-      text-align: center;
-      cursor: pointer;
-      transition: transform 0.2s, background 0.2s;
-    }
-
-    .playlist-card:hover {
-      transform: translateY(-4px);
-      background: var(--card-glass-hover);
-    }
-
-    .playlist-cover-placeholder {
-      width: 100%;
-      aspect-ratio: 1;
-      border-radius: 12px;
-      background: #252528;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 38px;
-      color: var(--accent-color);
-      margin-bottom: 10px;
-    }
-
-    /* Drop Zone Style */
-    .drop-zone {
-      border: 2px dashed var(--border-glass);
-      border-radius: 16px;
-      padding: 24px;
-      text-align: center;
-      background: rgba(255, 255, 255, 0.02);
-      transition: border-color 0.2s, background 0.2s;
-      cursor: pointer;
-    }
-
-    .drop-zone.dragover {
-      border-color: var(--accent-color);
-      background: rgba(250, 35, 59, 0.08);
-    }
-
-    /* ==========================================
-       5. Mini Player (Bottom Bar)
-       ========================================== */
-    .player-bar {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 86px;
-      background: var(--player-bg);
-      backdrop-filter: blur(30px);
-      -webkit-backdrop-filter: blur(30px);
-      border-top: 1px solid var(--border-glass);
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      z-index: 200;
-      box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
-    }
-
-    .player-mini-info {
-      display: flex;
-      align-items: center;
-      flex: 1;
-      overflow: hidden;
-      cursor: pointer;
-    }
-
-    .player-mini-cover {
-      width: 52px;
-      height: 52px;
-      border-radius: 10px;
-      background: #2c2c2e;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-right: 14px;
-      flex-shrink: 0;
-      overflow: hidden;
-    }
-
-    .player-mini-cover img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .player-mini-details {
-      overflow: hidden;
-    }
-
-    .player-mini-title {
-      font-size: 15px;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .player-mini-artist {
-      font-size: 13px;
-      color: var(--text-sub);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .player-controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .player-controls button {
-      background: none;
-      border: none;
-      color: var(--text-sub);
-      font-size: 18px;
-      cursor: pointer;
-      position: relative;
-      transition: color 0.2s, transform 0.1s;
-      padding: 6px;
-    }
-
-    .player-controls button:active {
-      transform: scale(0.88);
-    }
-
-    .player-controls button.active {
-      color: var(--accent-color);
-    }
-
-    .player-controls button.btn-play {
-      font-size: 26px;
-      color: var(--text-main);
-    }
-
-    /* Mini Progress Bar */
-    .mini-progress-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: rgba(255, 255, 255, 0.1);
-      cursor: pointer;
-    }
-
-    .mini-progress-bar {
-      height: 100%;
-      background: var(--accent-color);
-      width: 0%;
-      transition: width 0.1s linear;
-    }
-
-    /* ==========================================
-       6. Fullscreen Expand Player Modal
-       ========================================== */
-    .full-player-modal {
-      position: fixed;
-      top: 100%;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(15, 15, 18, 0.96);
-      backdrop-filter: blur(40px);
-      -webkit-backdrop-filter: blur(40px);
-      z-index: 300;
-      transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
-      display: flex;
-      flex-direction: column;
-      padding: 24px;
-      overflow-y: auto;
-    }
-
-    .full-player-modal.active {
-      top: 0;
-    }
-
-    .full-player-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .full-player-cover-container {
-      width: 100%;
-      max-width: 340px;
-      aspect-ratio: 1;
-      margin: 20px auto;
-      border-radius: 20px;
-      background: #2c2c2e;
-      overflow: hidden;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .full-player-cover-container img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .full-player-info {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-
-    .full-player-title {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .full-player-artist {
-      font-size: 16px;
-      color: var(--text-sub);
-    }
-
-    .seek-slider-container {
-      margin-bottom: 20px;
-    }
-
-    .seek-slider {
-      width: 100%;
-      accent-color: var(--accent-color);
-      height: 6px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 3px;
-      outline: none;
-    }
-
-    .time-stamps {
-      display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      color: var(--text-sub);
-      margin-top: 6px;
-    }
-
-    .full-controls {
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      margin-bottom: 30px;
-    }
-
-    .full-controls button {
-      background: none;
-      border: none;
-      color: var(--text-main);
-      font-size: 22px;
-      cursor: pointer;
-      position: relative;
-    }
-
-    .full-controls button.btn-main-play {
-      font-size: 48px;
-      color: var(--accent-color);
-    }
-
-    .volume-container {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      color: var(--text-sub);
-      padding: 0 10px;
-    }
-
-    .volume-slider {
-      flex: 1;
-      accent-color: var(--text-sub);
-      height: 4px;
-    }
-
-    /* Form UI Customization */
-    .form-control-dark {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--border-glass);
-      color: #fff;
-      border-radius: 10px;
-    }
-
-    .form-control-dark:focus {
-      background: rgba(255, 255, 255, 0.15);
-      color: #fff;
-      border-color: var(--accent-color);
-      box-shadow: none;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-  </style>
+<!-- PWA & Web App Settings -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+
+<!-- External CSS Libraries -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+<style>
+/* ==========================================
+1. Global Styles & Theme Variables
+========================================== */
+:root {
+--bg-black: #000000;
+--bg-glass: rgba(25, 25, 25, 0.78);
+--card-glass: rgba(38, 38, 42, 0.65);
+--card-glass-hover: rgba(55, 55, 60, 0.8);
+--accent-color: #fa233b; /* Apple Music Red */
+--accent-color-hover: #ff3b52;
+--text-main: #ffffff;
+--text-sub: #a1a1a6;
+--border-glass: rgba(255, 255, 255, 0.12);
+--modal-glass: rgba(30, 30, 32, 0.88);
+--player-bg: rgba(18, 18, 20, 0.92);
+}
+
+* {
+box-sizing: border-box;
+-webkit-tap-highlight-color: transparent;
+}
+
+body {
+background-color: var(--bg-black);
+color: var(--text-main);
+font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+margin: 0;
+padding: 0;
+padding-bottom: 140px;
+user-select: none;
+-webkit-user-select: none;
+overflow-x: hidden;
+}
+
+/* Scrollbar Design */
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+background: rgba(255, 255, 255, 0.2);
+border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: rgba(255, 255, 255, 0.4);
+}
+
+/* Glassmorphism Utilities */
+.glass-header {
+background: var(--bg-glass);
+backdrop-filter: blur(25px);
+-webkit-backdrop-filter: blur(25px);
+border-bottom: 1px solid var(--border-glass);
+}
+
+.glass-card {
+background: var(--card-glass);
+backdrop-filter: blur(20px);
+-webkit-backdrop-filter: blur(20px);
+border: 1px solid var(--border-glass);
+border-radius: 16px;
+padding: 16px;
+transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.glass-modal {
+background: var(--modal-glass) !important;
+backdrop-filter: blur(30px) !important;
+-webkit-backdrop-filter: blur(30px) !important;
+border: 1px solid var(--border-glass) !important;
+color: var(--text-main);
+border-radius: 20px;
+}
+
+/* ==========================================
+2. Navigation & Header
+========================================== */
+.app-header {
+position: sticky;
+top: 0;
+z-index: 100;
+padding: 16px 20px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+
+.app-title {
+font-size: 22px;
+font-weight: 700;
+letter-spacing: -0.5px;
+display: flex;
+align-items: center;
+}
+
+.nav-tabs-custom {
+display: flex;
+gap: 12px;
+margin-bottom: 20px;
+border-bottom: 1px solid var(--border-glass);
+padding-bottom: 10px;
+}
+
+.nav-tab-btn {
+background: none;
+border: none;
+color: var(--text-sub);
+font-size: 16px;
+font-weight: 600;
+padding: 6px 16px;
+border-radius: 20px;
+cursor: pointer;
+transition: all 0.2s;
+}
+
+.nav-tab-btn.active {
+background: var(--accent-color);
+color: #fff;
+}
+/* 検索インプットの文字色と背景色を明瞭化 */
+.search-bar input,
+input[type="search"],
+input[type="text"] {
+color: #ffffff !important;
+background-color: rgba(255, 255, 255, 0.15);
+}
+
+input::placeholder {
+color: #bbb !important;
+}
+/* ==========================================
+3. Batch Operation Toolbar
+========================================== */
+.batch-toolbar {
+display: none;
+background: rgba(250, 35, 59, 0.15);
+border: 1px solid var(--accent-color);
+border-radius: 14px;
+padding: 12px 18px;
+margin-bottom: 16px;
+align-items: center;
+justify-content: space-between;
+animation: fadeIn 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.batch-toolbar.active {
+display: flex;
+}
+
+/* ==========================================
+4. Song & Playlist List Views
+========================================== */
+.song-list {
+list-style: none;
+padding: 0;
+margin: 0;
+}
+
+.song-item {
+display: flex;
+align-items: center;
+padding: 10px 14px;
+border-radius: 14px;
+margin-bottom: 8px;
+transition: background 0.2s, border-color 0.2s;
+background: rgba(255, 255, 255, 0.03);
+border: 1px solid transparent;
+}
+
+.song-item:hover {
+background: rgba(255, 255, 255, 0.07);
+}
+
+.song-item.active {
+background: rgba(250, 35, 59, 0.18);
+border-color: rgba(250, 35, 59, 0.4);
+}
+
+.song-checkbox {
+width: 22px;
+height: 22px;
+margin-right: 14px;
+accent-color: var(--accent-color);
+cursor: pointer;
+}
+
+.song-cover {
+width: 50px;
+height: 50px;
+border-radius: 10px;
+object-fit: cover;
+margin-right: 14px;
+background: #2c2c2e;
+display: flex;
+align-items: center;
+justify-content: center;
+flex-shrink: 0;
+overflow: hidden;
+cursor: pointer;
+box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+.song-cover img {
+width: 100%;
+height: 100%;
+object-fit: cover;
+}
+
+.song-details {
+flex: 1;
+overflow: hidden;
+cursor: pointer;
+}
+
+.song-title {
+font-size: 15px;
+font-weight: 600;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+color: var(--text-main);
+}
+
+.song-artist {
+font-size: 13px;
+color: var(--text-sub);
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+margin-top: 2px;
+}
+
+.song-actions {
+display: flex;
+align-items: center;
+gap: 8px;
+}
+
+.btn-action-icon {
+background: none;
+border: none;
+color: var(--text-sub);
+font-size: 16px;
+padding: 8px;
+border-radius: 50%;
+cursor: pointer;
+transition: color 0.2s, background 0.2s;
+}
+
+.btn-action-icon:hover {
+color: #fff;
+background: rgba(255, 255, 255, 0.1);
+}
+
+/* Playlist Grid */
+.playlist-grid {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+gap: 16px;
+}
+
+.playlist-card {
+background: var(--card-glass);
+border: 1px solid var(--border-glass);
+border-radius: 16px;
+padding: 14px;
+text-align: center;
+cursor: pointer;
+transition: transform 0.2s, background 0.2s;
+}
+
+.playlist-card:hover {
+transform: translateY(-4px);
+background: var(--card-glass-hover);
+}
+
+.playlist-cover-placeholder {
+width: 100%;
+aspect-ratio: 1;
+border-radius: 12px;
+background: #252528;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 38px;
+color: var(--accent-color);
+margin-bottom: 10px;
+}
+
+/* Drop Zone Style */
+.drop-zone {
+border: 2px dashed var(--border-glass);
+border-radius: 16px;
+padding: 24px;
+text-align: center;
+background: rgba(255, 255, 255, 0.02);
+transition: border-color 0.2s, background 0.2s;
+cursor: pointer;
+}
+
+.drop-zone.dragover {
+border-color: var(--accent-color);
+background: rgba(250, 35, 59, 0.08);
+}
+
+/* ==========================================
+5. Mini Player (Bottom Bar)
+========================================== */
+.player-bar {
+position: fixed;
+bottom: 0;
+left: 0;
+right: 0;
+height: 86px;
+background: var(--player-bg);
+backdrop-filter: blur(30px);
+-webkit-backdrop-filter: blur(30px);
+border-top: 1px solid var(--border-glass);
+display: flex;
+align-items: center;
+padding: 0 16px;
+z-index: 200;
+box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+}
+
+.player-mini-info {
+display: flex;
+align-items: center;
+flex: 1;
+overflow: hidden;
+cursor: pointer;
+}
+
+.player-mini-cover {
+width: 52px;
+height: 52px;
+border-radius: 10px;
+background: #2c2c2e;
+display: flex;
+align-items: center;
+justify-content: center;
+margin-right: 14px;
+flex-shrink: 0;
+overflow: hidden;
+}
+
+.player-mini-cover img {
+width: 100%;
+height: 100%;
+object-fit: cover;
+}
+
+.player-mini-details {
+overflow: hidden;
+}
+
+.player-mini-title {
+font-size: 15px;
+font-weight: 600;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+.player-mini-artist {
+font-size: 13px;
+color: var(--text-sub);
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+.player-controls {
+display: flex;
+align-items: center;
+gap: 12px;
+}
+
+.player-controls button {
+background: none;
+border: none;
+color: var(--text-sub);
+font-size: 18px;
+cursor: pointer;
+position: relative;
+transition: color 0.2s, transform 0.1s;
+padding: 6px;
+}
+
+.player-controls button:active {
+transform: scale(0.88);
+}
+
+.player-controls button.active {
+color: var(--accent-color);
+}
+
+.player-controls button.btn-play {
+font-size: 26px;
+color: var(--text-main);
+}
+
+/* Mini Progress Bar */
+.mini-progress-container {
+position: absolute;
+top: 0;
+left: 0;
+right: 0;
+height: 3px;
+background: rgba(255, 255, 255, 0.1);
+cursor: pointer;
+}
+
+.mini-progress-bar {
+height: 100%;
+background: var(--accent-color);
+width: 0%;
+transition: width 0.1s linear;
+}
+
+/* ==========================================
+6. Fullscreen Expand Player Modal
+========================================== */
+.full-player-modal {
+position: fixed;
+top: 100%;
+left: 0;
+right: 0;
+bottom: 0;
+background: rgba(15, 15, 18, 0.96);
+backdrop-filter: blur(40px);
+-webkit-backdrop-filter: blur(40px);
+z-index: 300;
+transition: top 0.35s cubic-bezier(0.1, 0.9, 0.2, 1);
+display: flex;
+flex-direction: column;
+padding: 24px;
+overflow-y: auto;
+}
+
+.full-player-modal.active {
+top: 0;
+}
+
+.full-player-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 20px;
+}
+
+.full-player-cover-container {
+width: 100%;
+max-width: 340px;
+aspect-ratio: 1;
+margin: 20px auto;
+border-radius: 20px;
+background: #2c2c2e;
+overflow: hidden;
+box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+display: flex;
+align-items: center;
+justify-content: center;
+}
+
+.full-player-cover-container img {
+width: 100%;
+height: 100%;
+object-fit: cover;
+}
+
+.full-player-info {
+text-align: center;
+margin-bottom: 24px;
+}
+
+.full-player-title {
+font-size: 22px;
+font-weight: 700;
+margin-bottom: 4px;
+}
+
+.full-player-artist {
+font-size: 16px;
+color: var(--text-sub);
+}
+
+.seek-slider-container {
+margin-bottom: 20px;
+}
+
+.seek-slider {
+width: 100%;
+accent-color: var(--accent-color);
+height: 6px;
+background: rgba(255, 255, 255, 0.2);
+border-radius: 3px;
+outline: none;
+}
+
+.time-stamps {
+display: flex;
+justify-content: space-between;
+font-size: 12px;
+color: var(--text-sub);
+margin-top: 6px;
+}
+
+.full-controls {
+display: flex;
+justify-content: space-around;
+align-items: center;
+margin-bottom: 30px;
+}
+
+.full-controls button {
+background: none;
+border: none;
+color: var(--text-main);
+font-size: 22px;
+cursor: pointer;
+position: relative;
+}
+
+.full-controls button.btn-main-play {
+font-size: 48px;
+color: var(--accent-color);
+}
+
+.volume-container {
+display: flex;
+align-items: center;
+gap: 12px;
+color: var(--text-sub);
+padding: 0 10px;
+}
+
+.volume-slider {
+flex: 1;
+accent-color: var(--text-sub);
+height: 4px;
+}
+
+/* Form UI Customization */
+.form-control-dark {
+background: rgba(255, 255, 255, 0.08);
+border: 1px solid var(--border-glass);
+color: #fff;
+border-radius: 10px;
+}
+
+.form-control-dark:focus {
+background: rgba(255, 255, 255, 0.15);
+color: #fff;
+border-color: var(--accent-color);
+box-shadow: none;
+}
+
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(-6px); }
+to { opacity: 1; transform: translateY(0); }
+}
+</style>
 </head>
 <body>
 
-  <!-- App Header -->
-  <header class="app-header glass-header">
-    <div class="app-title"><i class="fa-solid fa-music text-danger me-2"></i>ライブラリ</div>
-    <div class="d-flex gap-2">
-      <button class="btn btn-sm btn-outline-light rounded-pill" onclick="toggleBatchMode()">
-        <i class="fa-solid fa-list-check me-1"></i>選択
-      </button>
-      <button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="openSettingsModal()">
-        <i class="fa-solid fa-gear"></i>
-      </button>
-    </div>
-  </header>
+<!-- App Header -->
+<header class="app-header glass-header">
+<div class="app-title"><i class="fa-solid fa-music text-danger me-2"></i>ライブラリ</div>
+<div class="d-flex gap-2">
+<button class="btn btn-sm btn-outline-light rounded-pill" onclick="toggleBatchMode()">
+<i class="fa-solid fa-list-check me-1"></i>選択
+</button>
+<button class="btn btn-sm btn-outline-secondary rounded-circle" onclick="openSettingsModal()">
+<i class="fa-solid fa-gear"></i>
+</button>
+</div>
+</header>
 
-  <div class="container mt-3">
+<div class="container mt-3">
 
-    <!-- Navigation Tabs -->
-    <div class="nav-tabs-custom">
-      <button class="nav-tab-btn active" id="tabSongsBtn" onclick="switchTab('songs')">すべての曲</button>
-      <button class="nav-tab-btn" id="tabPlaylistsBtn" onclick="switchTab('playlists')">プレイリスト</button>
-    </div>
+<!-- Navigation Tabs -->
+<div class="nav-tabs-custom">
+<button class="tab-btn active" data-tab="songs" onclick="switchTab('songs')">すべての曲</button>
+<button class="tab-btn" data-tab="playlists" onclick="switchTab('playlists')">プレイリスト</button>
+</div>
 
-    <!-- SONGS TAB CONTENT -->
-    <div id="songsTabContent">
-      <!-- Search & Sort Controls -->
-      <div class="glass-card mb-3">
-        <div class="row g-2">
-          <div class="col-7">
-            <input type="text" id="searchInput" class="form-control form-control-dark form-control-sm" placeholder="曲名、歌手名で検索..." oninput="renderSongs()">
-          </div>
-          <div class="col-5">
-            <select id="sortSelect" class="form-select form-select-dark form-select-sm form-control-dark" onchange="renderSongs()">
-              <option value="newest">追加順</option>
-              <option value="title">曲名順</option>
-              <option value="artist">歌手順</option>
-            </select>
-          </div>
-        </div>
-      </div>
+<!-- SONGS TAB CONTENT -->
+<div id="songsTabContent">
+<!-- Search & Sort Controls -->
+<div class="glass-card mb-3">
+<div class="row g-2">
+<div class="col-7">
+<input type="text" id="searchInput" class="form-control form-control-dark form-control-sm" placeholder="曲名、歌手名で検索..." oninput="renderSongs()">
+</div>
+<div class="col-5">
+<select id="sortSelect" class="form-select form-select-dark form-select-sm form-control-dark" onchange="renderSongs()">
+<option value="newest">追加順</option>
+<option value="title">曲名順</option>
+<option value="artist">歌手順</option>
+</select>
+</div>
+</div>
+</div>
 
-      <!-- Batch Operation Toolbar -->
-      <div id="batchToolbar" class="batch-toolbar">
-        <div class="d-flex align-items-center">
-          <input type="checkbox" id="selectAllCheckbox" class="song-checkbox" onchange="toggleSelectAll(this.checked)">
-          <span id="selectedCountText" class="small fw-bold">0件選択中</span>
-        </div>
-        <div class="d-flex gap-2">
-          <select id="batchPlaylistSelect" class="form-select form-select-sm form-control-dark" style="width: 130px;">
-            <option value="">追加先...</option>
-          </select>
-          <button class="btn btn-sm btn-danger" title="プレイリストへ追加" onclick="executeBatchAddToPlaylist()"><i class="fa-solid fa-plus"></i></button>
-          <button class="btn btn-sm btn-outline-danger" title="削除" onclick="executeBatchDelete()"><i class="fa-solid fa-trash"></i></button>
-        </div>
-      </div>
+<!-- Batch Operation Toolbar -->
+<div id="batchToolbar" class="batch-toolbar">
+<div class="d-flex align-items-center">
+<input type="checkbox" id="selectAllCheckbox" class="song-checkbox" onchange="toggleSelectAll(this.checked)">
+<span id="selectedCountText" class="small fw-bold">0件選択中</span>
+</div>
+<div class="d-flex gap-2">
+<select id="batchPlaylistSelect" class="form-select form-select-sm form-control-dark" style="width: 130px;">
+<option value="">追加先...</option>
+</select>
+<button class="btn btn-sm btn-danger" title="プレイリストへ追加" onclick="executeBatchAddToPlaylist()"><i class="fa-solid fa-plus"></i></button>
+<button class="btn btn-sm btn-outline-danger" title="削除" onclick="executeBatchDelete()"><i class="fa-solid fa-trash"></i></button>
+</div>
+</div>
 
-      <!-- File Import Drop Zone -->
-      <div class="glass-card mb-3">
-        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-          <i class="fa-solid fa-cloud-arrow-up text-danger mb-2" style="font-size: 28px;"></i>
-          <div class="fw-bold small">楽曲ファイルを追加 (ドラッグ＆ドロップ対応)</div>
-          <div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A ファイルに対応</div>
-          <input type="file" id="fileInput" accept="audio/*, .mp3, .wav, .m4a, .aac" multiple style="display: none;" onchange="handleFileImport(this.files)">
-        </div>
-      </div>
+<!-- File Import Drop Zone -->
+<div class="glass-card mb-3">
+<div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+<i class="fa-solid fa-cloud-arrow-up text-danger mb-2" style="font-size: 28px;"></i>
+<div class="fw-bold small">楽曲ファイルを追加 (ドラッグ＆ドロップ対応)</div>
+<div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A ファイルに対応</div>
+<input type="file" id="fileInput" accept="audio/*, .mp3, .wav, .m4a, .aac" multiple style="display: none;" onchange="handleFileImport(this.files)">
+</div>
+</div>
 
-      <!-- Manual Song Import Form -->
-      <div class="glass-card mb-3">
-        <div class="row g-2">
-          <div class="col-5">
-            <input type="text" id="inputTitle" class="form-control form-control-dark form-control-sm" placeholder="曲名">
-          </div>
-          <div class="col-4">
-            <input type="text" id="inputArtist" class="form-control form-control-dark form-control-sm" placeholder="アーティスト">
-          </div>
-          <div class="col-3">
-            <button class="btn btn-sm btn-danger w-100" onclick="addNewManualSong()"><i class="fa-solid fa-plus me-1"></i>追加</button>
-          </div>
-        </div>
-      </div>
+<!-- Manual Song Import Form -->
+<div class="glass-card mb-3">
+<div class="row g-2">
+<div class="col-5">
+<input type="text" id="inputTitle" class="form-control form-control-dark form-control-sm" placeholder="曲名">
+</div>
+<div class="col-4">
+<input type="text" id="inputArtist" class="form-control form-control-dark form-control-sm" placeholder="アーティスト">
+</div>
+<div class="col-3">
+<button class="btn btn-sm btn-danger w-100" onclick="addNewManualSong()"><i class="fa-solid fa-plus me-1"></i>追加</button>
+</div>
+</div>
+</div>
 
-      <!-- Song List Container -->
-      <ul id="songListContainer" class="song-list"></ul>
-    </div>
+<!-- Song List Container -->
+<ul id="songListContainer" class="song-list"></ul>
+</div>
 
-    <!-- PLAYLISTS TAB CONTENT -->
-    <div id="playlistsTabContent" style="display: none;">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold m-0">マイプレイリスト</h5>
-        <button class="btn btn-sm btn-danger rounded-pill" onclick="openCreatePlaylistModal()">
-          <i class="fa-solid fa-plus me-1"></i>新規作成
-        </button>
-      </div>
+<!-- PLAYLISTS TAB CONTENT -->
+<div id="playlistsTabContent" style="display: none;">
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h5 class="fw-bold m-0">マイプレイリスト</h5>
+<button class="btn btn-sm btn-danger rounded-pill" onclick="openCreatePlaylistModal()">
+<i class="fa-solid fa-plus me-1"></i>新規作成
+</button>
+</div>
 
-      <div id="playlistGrid" class="playlist-grid"></div>
-    </div>
+<div id="playlistGrid" class="playlist-grid"></div>
+</div>
 
-  </div>
+</div>
 
-  <!-- Persistent Player Bar (Mini Player) -->
-  <div class="player-bar">
-    <div class="mini-progress-container" onclick="seekMiniPlayer(event)">
-      <div class="mini-progress-bar" id="miniProgressBar"></div>
-    </div>
-    <div class="player-mini-info" onclick="openFullPlayer()">
-      <div class="player-mini-cover" id="playerMiniCover">
-        <i class="fa-solid fa-music text-secondary"></i>
-      </div>
-      <div class="player-mini-details">
-        <div class="player-mini-title" id="playerMiniTitle">未再生</div>
-        <div class="player-mini-artist" id="playerMiniArtist">楽曲を選択してください</div>
-      </div>
-    </div>
-    <div class="player-controls">
-      <button id="miniShuffleBtn" onclick="toggleShuffle()" title="シャッフル"><i class="fa-solid fa-shuffle"></i></button>
-      <button class="btn-play" onclick="togglePlay()"><i class="fa-solid fa-play" id="miniPlayBtnIcon"></i></button>
-      <button onclick="playNext()" title="次の曲"><i class="fa-solid fa-forward"></i></button>
-      <button id="miniRepeatBtn" onclick="toggleRepeat()" title="リピート"><i class="fa-solid fa-repeat"></i></button>
-    </div>
-  </div>
+<!-- Persistent Player Bar (Mini Player) -->
+<div class="player-bar">
+<div class="mini-progress-container" onclick="seekMiniPlayer(event)">
+<div class="mini-progress-bar" id="miniProgressBar"></div>
+</div>
+<div class="player-mini-info" onclick="openFullPlayer()">
+<div class="player-mini-cover" id="playerMiniCover">
+<i class="fa-solid fa-music text-secondary"></i>
+</div>
+<div class="player-mini-details">
+<div class="player-mini-title" id="playerMiniTitle">未再生</div>
+<div class="player-mini-artist" id="playerMiniArtist">楽曲を選択してください</div>
+</div>
+</div>
+<div class="player-controls">
+<button id="miniShuffleBtn" onclick="toggleShuffle()" title="シャッフル"><i class="fa-solid fa-shuffle"></i></button>
+<button class="btn-play" onclick="togglePlay()"><i class="fa-solid fa-play" id="miniPlayBtnIcon"></i></button>
+<button onclick="playNext()" title="次の曲"><i class="fa-solid fa-forward"></i></button>
+<button id="miniRepeatBtn" onclick="toggleRepeat()" title="リピート"><i class="fa-solid fa-repeat"></i></button>
+</div>
+</div>
 
-  <!-- Fullscreen Expand Player Modal -->
-  <div id="fullPlayerModal" class="full-player-modal">
-    <div class="full-player-header">
-      <button class="btn-action-icon" onclick="closeFullPlayer()"><i class="fa-solid fa-chevron-down"></i></button>
-      <span class="small text-muted fw-bold">再生中</span>
-      <button class="btn-action-icon" onclick="openCurrentPlaylistModal()"><i class="fa-solid fa-list-ul"></i></button>
-    </div>
+<!-- Fullscreen Expand Player Modal -->
+<div id="fullPlayerModal" class="full-player-modal">
+<div class="full-player-header">
+<button class="btn-action-icon" onclick="closeFullPlayer()"><i class="fa-solid fa-chevron-down"></i></button>
+<span class="small text-muted fw-bold">再生中</span>
+<button class="btn-action-icon" onclick="openCurrentPlaylistModal()"><i class="fa-solid fa-list-ul"></i></button>
+</div>
 
-    <div class="full-player-cover-container" id="fullPlayerCover">
-      <i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>
-    </div>
+<div class="full-player-cover-container" id="fullPlayerCover">
+<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>
+</div>
 
-    <div class="full-player-info">
-      <div class="full-player-title" id="fullPlayerTitle">未再生</div>
-      <div class="full-player-artist" id="fullPlayerArtist">楽曲を選択してください</div>
-    </div>
+<div class="full-player-info">
+<div class="full-player-title" id="fullPlayerTitle">未再生</div>
+<div class="full-player-artist" id="fullPlayerArtist">楽曲を選択してください</div>
+</div>
 
-    <div class="seek-slider-container">
-      <input type="range" id="fullSeekSlider" class="seek-slider" min="0" max="100" value="0" oninput="onSeekSliderChange(this.value)">
-      <div class="time-stamps">
-        <span id="currentTimeText">0:00</span>
-        <span id="durationTimeText">0:00</span>
-      </div>
-    </div>
+<div class="seek-slider-container">
+<input type="range" id="fullSeekSlider" class="seek-slider" min="0" max="100" value="0" oninput="onSeekSliderChange(this.value)">
+<div class="time-stamps">
+<span id="currentTimeText">0:00</span>
+<span id="durationTimeText">0:00</span>
+</div>
+</div>
 
-    <div class="full-controls">
-      <button id="fullShuffleBtn" onclick="toggleShuffle()"><i class="fa-solid fa-shuffle"></i></button>
-      <button onclick="playPrev()"><i class="fa-solid fa-backward"></i></button>
-      <button class="btn-main-play" onclick="togglePlay()"><i class="fa-solid fa-circle-play" id="fullPlayBtnIcon"></i></button>
-      <button onclick="playNext()"><i class="fa-solid fa-forward"></i></button>
-      <button id="fullRepeatBtn" onclick="toggleRepeat()"><i class="fa-solid fa-repeat"></i></button>
-    </div>
+<div class="full-controls">
+<button id="fullShuffleBtn" onclick="toggleShuffle()"><i class="fa-solid fa-shuffle"></i></button>
+<button onclick="playPrev()"><i class="fa-solid fa-backward"></i></button>
+<button class="btn-main-play" onclick="togglePlay()"><i class="fa-solid fa-circle-play" id="fullPlayBtnIcon"></i></button>
+<button onclick="playNext()"><i class="fa-solid fa-forward"></i></button>
+<button id="fullRepeatBtn" onclick="toggleRepeat()"><i class="fa-solid fa-repeat"></i></button>
+</div>
 
-    <div class="volume-container">
-      <i class="fa-solid fa-volume-low"></i>
-      <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1" oninput="setVolume(this.value)">
-      <i class="fa-solid fa-volume-high"></i>
-    </div>
-  </div>
+<div class="volume-container">
+<i class="fa-solid fa-volume-low"></i>
+<input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="1" oninput="setVolume(this.value)">
+<i class="fa-solid fa-volume-high"></i>
+</div>
+</div>
 
-  <!-- Audio Element -->
-  <audio id="audioPlayer" ontimeupdate="updateProgress()" onended="handleSongEnd()"></audio>
+<!-- Audio Element -->
+<audio id="audioPlayer" ontimeupdate="updateProgress()" onended="handleSongEnd()"></audio>
 
-  <!-- Modal: Create Playlist -->
-  <div class="modal fade" id="createPlaylistModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content glass-modal">
-        <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold">新規プレイリスト</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <input type="text" id="newPlaylistNameInput" class="form-control form-control-dark" placeholder="プレイリスト名">
-        </div>
-        <div class="modal-footer border-0">
-          <button type="button" class="btn btn-sm btn-outline-light rounded-pill" data-bs-dismiss="modal">キャンセル</button>
-          <button type="button" class="btn btn-sm btn-danger rounded-pill" onclick="saveNewPlaylist()">作成</button>
-        </div>
-      </div>
-    </div>
-  </div>
+<!-- Modal: Create Playlist -->
+<div class="modal fade" id="createPlaylistModal" tabindex="-1">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content glass-modal">
+<div class="modal-header border-0">
+<h5 class="modal-title fw-bold">新規プレイリスト</h5>
+<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+<input type="text" id="newPlaylistNameInput" class="form-control form-control-dark" placeholder="プレイリスト名">
+</div>
+<div class="modal-footer border-0">
+<button type="button" class="btn btn-sm btn-outline-light rounded-pill" data-bs-dismiss="modal">キャンセル</button>
+<button type="button" class="btn btn-sm btn-danger rounded-pill" onclick="saveNewPlaylist()">作成</button>
+</div>
+</div>
+</div>
+</div>
 
-  <!-- Modal: Playlist Detail -->
-  <div class="modal fade" id="playlistDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content glass-modal">
-        <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold" id="playlistDetailTitle">プレイリスト詳細</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <ul id="playlistSongListContainer" class="song-list"></ul>
-        </div>
-      </div>
-    </div>
-  </div>
+<!-- Modal: Playlist Detail -->
+<div class="modal fade" id="playlistDetailModal" tabindex="-1">
+<div class="modal-dialog modal-dialog-centered modal-lg">
+<div class="modal-content glass-modal">
+<div class="modal-header border-0">
+<h5 class="modal-title fw-bold" id="playlistDetailTitle">プレイリスト詳細</h5>
+<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+<ul id="playlistSongListContainer" class="song-list"></ul>
+</div>
+</div>
+</div>
+</div>
 
-  <!-- Modal: Settings -->
-  <div class="modal fade" id="settingsModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content glass-modal">
-        <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold">設定 & データ管理</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <p class="small text-muted">データベース状態: IndexedDB 正常同期中</p>
-          <button class="btn btn-sm btn-outline-danger w-100 mb-2" onclick="clearAllData()">すべてのデータを初期化</button>
-        </div>
-      </div>
-    </div>
-  </div>
+<!-- Modal: Settings -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content glass-modal">
+<div class="modal-header border-0">
+<h5 class="modal-title fw-bold">設定 & データ管理</h5>
+<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+<p class="small text-muted">データベース状態: IndexedDB 正常同期中</p>
+<button class="btn btn-sm btn-outline-danger w-100 mb-2" onclick="clearAllData()">すべてのデータを初期化</button>
+</div>
+</div>
+</div>
+</div>
 
-  <!-- JavaScript Modules & Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    /* ==========================================
-       1. Database Architecture (IndexedDB)
-       ========================================== */
-    const DB_NAME = 'AppleMusicPWADB_Full';
-    const DB_VERSION = 1;
-    let db;
+<!-- JavaScript Modules & Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* ==========================================
+1. Database Architecture (IndexedDB)
+========================================== */
+const DB_NAME = 'AppleMusicPWADB_Full';
+const DB_VERSION = 1;
+let db;
 
-    function initDB() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onupgradeneeded = (e) => {
-          db = e.target.result;
-          if (!db.objectStoreNames.contains('songs')) {
-            db.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
-          }
-          if (!db.objectStoreNames.contains('playlists')) {
-            db.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
-          }
-        };
-        request.onsuccess = (e) => {
-          db = e.target.result;
-          resolve();
-        };
-        request.onerror = (e) => reject(e);
-      });
-    }
-
-    /* ==========================================
-       2. Application State Management
-       ========================================== */
-    let songsData = [];
-    let playlistsData = [];
-    let activeTab = 'songs';
-    let isBatchMode = false;
-    let selectedSongIds = new Set();
-    
-    // Playback State
-    let currentPlayingIndex = -1;
-    let isShuffle = false;
-    let repeatMode = 'OFF'; // 'OFF' | 'ALL' | 'ONE'
-    let currentAudioUrl = null;
-
-    /* ==========================================
-       3. Lifecycle & Initialization
-       ========================================== */
-    window.addEventListener('DOMContentLoaded', async () => {
-      await initDB();
-      await loadSongsFromDB();
-      await loadPlaylistsFromDB();
-      setupDragAndDrop();
-      populatePlaylistDropdown();
-      renderSongs();
-      renderPlaylists();
-    });
-
-    /* ==========================================
-       4. DB Sync Functions
-       ========================================== */
-    async function loadSongsFromDB() {
-      return new Promise((resolve) => {
-        const tx = db.transaction('songs', 'readonly');
-        const store = tx.objectStore('songs');
-        const req = store.getAll();
-        req.onsuccess = () => {
-          songsData = req.result || [];
-          resolve();
-        };
-      });
-    }
-
-    async function loadPlaylistsFromDB() {
-      return new Promise((resolve) => {
-        const tx = db.transaction('playlists', 'readonly');
-        const store = tx.objectStore('playlists');
-        const req = store.getAll();
-        req.onsuccess = () => {
-          playlistsData = req.result || [];
-          if (playlistsData.length === 0) {
-            // Preset Default Playlists
-            playlistsData = [
-              { id: 1, name: 'お気に入り', songIds: [] },
-              { id: 2, name: 'ドライブ', songIds: [] }
-            ];
-            playlistsData.forEach(p => savePlaylistToDB(p));
-          }
-          resolve();
-        };
-      });
-    }
-
-    async function saveSongToDB(song) {
-      return new Promise((resolve) => {
-        const tx = db.transaction('songs', 'readwrite');
-        const store = tx.objectStore('songs');
-        const req = store.add(song);
-        req.onsuccess = () => {
-          song.id = req.result;
-          resolve(song);
-        };
-      });
-    }
-
-    async function deleteSongFromDB(id) {
-      return new Promise((resolve) => {
-        const tx = db.transaction('songs', 'readwrite');
-        const store = tx.objectStore('songs');
-        store.delete(id).onsuccess = () => resolve();
-      });
-    }
-
-    async function savePlaylistToDB(playlist) {
-      return new Promise((resolve) => {
-        const tx = db.transaction('playlists', 'readwrite');
-        const store = tx.objectStore('playlists');
-        store.put(playlist).onsuccess = () => resolve();
-      });
-    }
-
-    /* ==========================================
-       5. UI Navigation & Rendering
-       ========================================== */
-function switchTab(tab) {
-  activeTab = tab;
-
-  // タブボタンの表示切り替え
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-
-  // コンテンツの切り替え
-  const songsTab = document.getElementById('songsTabContent');
-  const playlistsTab = document.getElementById('playlistsTabContent');
-
-  if (songsTab) songsTab.style.display = tab === 'songs' ? 'block' : 'none';
-  if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : 'none';
-
-  // プレイリストタブが開かれたら最新状態に描画
-  if (tab === 'playlists') {
-    renderPlaylists();
-  }
+function initDB() {
+return new Promise((resolve, reject) => {
+const request = indexedDB.open(DB_NAME, DB_VERSION);
+request.onupgradeneeded = (e) => {
+db = e.target.result;
+if (!db.objectStoreNames.contains('songs')) {
+db.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
+}
+if (!db.objectStoreNames.contains('playlists')) {
+db.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
+}
+};
+request.onsuccess = (e) => {
+db = e.target.result;
+resolve();
+};
+request.onerror = (e) => reject(e);
+});
 }
 
-   function renderSongs() {
-      const container = document.getElementById('songListContainer');
-      const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
-      const sortBy = document.getElementById('sortSelect').value;
+/* ==========================================
+2. Application State Management
+========================================== */
+let songsData = [];
+let playlistsData = [];
+let activeTab = 'songs';
+let isBatchMode = false;
+let selectedSongIds = new Set();
 
-      let filtered = songsData.filter(s => {
-        if (!searchQuery) return true;
-        const title = (s.title || '').toLowerCase();
-        const artist = (s.artist || '').toLowerCase();
-        return title.includes(searchQuery) || artist.includes(searchQuery);
-      });
+// Playback State
+let currentPlayingIndex = -1;
+let isShuffle = false;
+let repeatMode = 'OFF'; // 'OFF' | 'ALL' | 'ONE'
+let currentAudioUrl = null;
 
-      if (sortBy === 'title') {
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
-      } else if (sortBy === 'artist') {
-        filtered.sort((a, b) => a.artist.localeCompare(b.artist));
-      } else {
-        filtered.sort((a, b) => b.id - a.id);
-      }
+/* ==========================================
+3. Lifecycle & Initialization
+========================================== */
+window.addEventListener('DOMContentLoaded', async () => {
+await initDB();
+await loadSongsFromDB();
+await loadPlaylistsFromDB();
+setupDragAndDrop();
+populatePlaylistDropdown();
+renderSongs();
+renderPlaylists();
+});
 
-      container.innerHTML = '';
+/* ==========================================
+4. DB Sync Functions
+========================================== */
+async function loadSongsFromDB() {
+return new Promise((resolve) => {
+const tx = db.transaction('songs', 'readonly');
+const store = tx.objectStore('songs');
+const req = store.getAll();
+req.onsuccess = () => {
+songsData = req.result || [];
+resolve();
+};
+});
+}
 
-      if (filtered.length === 0) {
-        container.innerHTML = `<li class="text-center text-muted py-5 small">楽曲が見つかりません</li>`;
-        return;
-      }
+async function loadPlaylistsFromDB() {
+return new Promise((resolve) => {
+const tx = db.transaction('playlists', 'readonly');
+const store = tx.objectStore('playlists');
+const req = store.getAll();
+req.onsuccess = () => {
+playlistsData = req.result || [];
+if (playlistsData.length === 0) {
+// Preset Default Playlists
+playlistsData = [
+{ id: 1, name: 'お気に入り', songIds: [] },
+{ id: 2, name: 'ドライブ', songIds: [] }
+];
+playlistsData.forEach(p => savePlaylistToDB(p));
+}
+resolve();
+};
+});
+}
 
-      filtered.forEach(song => {
-        const li = document.createElement('li');
-        const isPlaying = currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === song.id;
-        li.className = `song-item ${isPlaying ? 'active' : ''}`;
+async function saveSongToDB(song) {
+return new Promise((resolve) => {
+const tx = db.transaction('songs', 'readwrite');
+const store = tx.objectStore('songs');
+const req = store.add(song);
+req.onsuccess = () => {
+song.id = req.result;
+resolve(song);
+};
+});
+}
 
-        const isChecked = selectedSongIds.has(song.id);
+async function deleteSongFromDB(id) {
+return new Promise((resolve) => {
+const tx = db.transaction('songs', 'readwrite');
+const store = tx.objectStore('songs');
+store.delete(id).onsuccess = () => resolve();
+});
+}
 
-        li.innerHTML = `
-          ${isBatchMode ? `<input type="checkbox" class="song-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelectSong(${song.id})">` : ''}
-          <div class="song-cover" onclick="playSongById(${song.id})">
-            ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
-          </div>
-          <div class="song-details" onclick="${isBatchMode ? `toggleSelectSong(${song.id})` : `playSongById(${song.id})`}">
-            <div class="song-title">${escapeHtml(song.title)}</div>
-            <div class="song-artist">${escapeHtml(song.artist)}</div>
-          </div>
-          <div class="song-actions">
-            <button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
-          </div>
-        `;
-        container.appendChild(li);
-      });
+async function savePlaylistToDB(playlist) {
+return new Promise((resolve) => {
+const tx = db.transaction('playlists', 'readwrite');
+const store = tx.objectStore('playlists');
+store.put(playlist).onsuccess = () => resolve();
+});
+}
 
-      updateBatchToolbarUI();
+/* ==========================================
+5. UI Navigation & Rendering
+========================================== */
+function switchTab(tab) {
+activeTab = tab;
+
+// ボタンの赤色（activeクラス）切り替え
+document.querySelectorAll('.tab-btn').forEach(btn => {
+if (btn.dataset.tab === tab) {
+btn.classList.add('active');
+} else {
+btn.classList.remove('active');
+}
+});
+
+// コンテンツの表示切り替え
+const songsTab = document.getElementById('songsTabContent');
+const playlistsTab = document.getElementById('playlistsTabContent');
+if (songsTab) songsTab.style.display = tab === 'songs' ? 'block' : 'none';
+if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : 'none';
+
+if (tab === 'playlists') renderPlaylists();
+}
+function openCurrentPlaylistModal() {
+  const modal = document.getElementById('currentPlaylistModal');
+  
+  if (modal) {
+    modal.style.display = 'block';
+    if (typeof renderCurrentQueue === 'function') {
+      renderCurrentQueue();
     }
+  } else {
+    if (typeof closeFullscreenPlayer === 'function') {
+      closeFullscreenPlayer();
+    }
+    switchTab('songs');
+  }
+}
+function renderSongs() {
+const container = document.getElementById('songListContainer');
+const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+const sortBy = document.getElementById('sortSelect').value;
+
+let filtered = songsData.filter(s => {
+if (!searchQuery) return true;
+const title = (s.title || '').toLowerCase();
+const artist = (s.artist || '').toLowerCase();
+return title.includes(searchQuery) || artist.includes(searchQuery);
+});
+
+if (sortBy === 'title') {
+filtered.sort((a, b) => a.title.localeCompare(b.title));
+} else if (sortBy === 'artist') {
+filtered.sort((a, b) => a.artist.localeCompare(b.artist));
+} else {
+filtered.sort((a, b) => b.id - a.id);
+}
+
+container.innerHTML = '';
+
+if (filtered.length === 0) {
+container.innerHTML = `<li class="text-center text-muted py-5 small">楽曲が見つかりません</li>`;
+return;
+}
+
+filtered.forEach(song => {
+const li = document.createElement('li');
+const isPlaying = currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === song.id;
+li.className = `song-item ${isPlaying ? 'active' : ''}`;
+
+const isChecked = selectedSongIds.has(song.id);
+
+li.innerHTML = `
+${isBatchMode ? `<input type="checkbox" class="song-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelectSong(${song.id})">` : ''}
+<div class="song-cover" onclick="playSongById(${song.id})">
+${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
+</div>
+<div class="song-details" onclick="${isBatchMode ? `toggleSelectSong(${song.id})` : `playSongById(${song.id})`}">
+<div class="song-title">${escapeHtml(song.title)}</div>
+<div class="song-artist">${escapeHtml(song.artist)}</div>
+</div>
+<div class="song-actions">
+<button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
+</div>
+`;
+container.appendChild(li);
+});
+
+updateBatchToolbarUI();
+}
 
 // プレイリスト一覧の描画（削除ボタンを追加）
 function renderPlaylists() {
- const container = document.getElementById('playlistGrid');
-  if (!container) return;
-  container.innerHTML = '';
+const container = document.getElementById('playlistGrid');
+if (!container) return;
+container.innerHTML = '';
 
-  if (playlistsData.length === 0) {
-    container.innerHTML = '<div class="text-center text-muted py-4 small">プレイリストがありません</div>';
-    return;
-  }
-
-  playlistsData.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'card mb-2 p-3 d-flex flex-row justify-content-between align-items-center';
-    card.innerHTML = `
-      <div onclick="openPlaylistDetail(${p.id})" style="cursor: pointer; flex-grow: 1;">
-        <div class="fw-bold">${escapeHtml(p.name)}</div>
-        <div class="text-muted small">${p.songIds ? p.songIds.length : 0} 曲</div>
-      </div>
-      <button class="btn btn-outline-danger btn-sm ms-2" onclick="deletePlaylist(${p.id})">
-        <i class="fa-solid fa-trash"></i>
-      </button>
-    `;
-    container.appendChild(card);
-  });
+if (playlistsData.length === 0) {
+container.innerHTML = '<div class="text-center text-muted py-4 small">プレイリストがありません</div>';
+return;
 }
 
-    // プレイリスト削除処理
+playlistsData.forEach(p => {
+const card = document.createElement('div');
+card.className = 'card mb-2 p-3 d-flex flex-row justify-content-between align-items-center';
+card.innerHTML = `
+<div onclick="openPlaylistDetail(${p.id})" style="cursor: pointer; flex-grow: 1;">
+<div class="fw-bold">${escapeHtml(p.name)}</div>
+<div class="text-muted small">${p.songIds ? p.songIds.length : 0} 曲</div>
+</div>
+<button class="btn btn-outline-danger btn-sm ms-2" onclick="deletePlaylist(${p.id})">
+<i class="fa-solid fa-trash"></i>
+</button>
+`;
+container.appendChild(card);
+});
+}
+
+// プレイリスト削除処理
 async function deletePlaylist(id) {
-  const playlist = playlistsData.find(p => p.id === id);
-  const name = playlist ? playlist.name : 'このプレイリスト';
+const playlist = playlistsData.find(p => p.id === id);
+const name = playlist ? playlist.name : 'このプレイリスト';
 
-  if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
+if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
 
-  // IndexedDBから削除
-  const tx = db.transaction('playlists', 'readwrite');
-  tx.objectStore('playlists').delete(id);
+// IndexedDBから削除
+const tx = db.transaction('playlists', 'readwrite');
+tx.objectStore('playlists').delete(id);
 
-  // ローカルデータ更新
-  playlistsData = playlistsData.filter(p => p.id !== id);
+// ローカルデータ更新
+playlistsData = playlistsData.filter(p => p.id !== id);
 
-  // UI再描画
-  populatePlaylistDropdown();
-  renderPlaylists();
+// UI再描画
+populatePlaylistDropdown();
+renderPlaylists();
 }
 /* ==========================================
-   6. File Import & Processing
-   ========================================== */
+6. File Import & Processing
+========================================== */
 function setupDragAndDrop() {
-  const zone = document.getElementById('dropZone');
+const zone = document.getElementById('dropZone');
 
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    zone.addEventListener(eventName, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    }, false);
-  });
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+zone.addEventListener(eventName, (e) => {
+e.preventDefault();
+e.stopPropagation();
+}, false);
+});
 
-  ['dragenter', 'dragover'].forEach(eventName => {
-    zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
-  });
+['dragenter', 'dragover'].forEach(eventName => {
+zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+});
 
-  ['dragleave', 'drop'].forEach(eventName => {
-    zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
-  });
+['dragleave', 'drop'].forEach(eventName => {
+zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+});
 
-  zone.addEventListener('drop', (e) => {
-    const dt = e.dataTransfer;
-    if (dt && dt.files.length > 0) {
-      handleFileImport(dt.files);
-    }
-  });
+zone.addEventListener('drop', (e) => {
+const dt = e.dataTransfer;
+if (dt && dt.files.length > 0) {
+handleFileImport(dt.files);
+}
+});
 }
 
 // MP3からID3タグ（曲名・アーティスト・ジャケット画像）を取得
 function parseAudioMetadata(file) {
-  return new Promise((resolve) => {
-    const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
-    const fallbackData = { title: defaultTitle, artist: '不明なアーティスト', coverUrl: null };
+return new Promise((resolve) => {
+const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
+const fallbackData = { title: defaultTitle, artist: '不明なアーティスト', coverUrl: null };
 
-    if (!window.jsmediatags) {
-      resolve(fallbackData);
-      return;
-    }
+if (!window.jsmediatags) {
+resolve(fallbackData);
+return;
+}
 
-    window.jsmediatags.read(file, {
-      onSuccess: function(tag) {
-        const tags = tag.tags;
-        const title = tags.title ? tags.title.trim() : defaultTitle;
-        const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
-        let coverUrl = null;
+window.jsmediatags.read(file, {
+onSuccess: function(tag) {
+const tags = tag.tags;
+const title = tags.title ? tags.title.trim() : defaultTitle;
+const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
+let coverUrl = null;
 
-        if (tags.picture) {
-          const { data, format } = tags.picture;
-          let base64String = "";
-          for (let i = 0; i < data.length; i++) {
-            base64String += String.fromCharCode(data[i]);
-          }
-          coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
-        }
+if (tags.picture) {
+const { data, format } = tags.picture;
+let base64String = "";
+for (let i = 0; i < data.length; i++) {
+base64String += String.fromCharCode(data[i]);
+}
+coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
+}
 
-        resolve({ title, artist, coverUrl });
-      },
-      onError: function() {
-        resolve(fallbackData);
-      }
-    });
-  });
+resolve({ title, artist, coverUrl });
+},
+onError: function() {
+resolve(fallbackData);
+}
+});
+});
 }
 
 async function handleFileImport(files) {
-  let addedCount = 0;
+let addedCount = 0;
 
-  for (let file of files) {
-    const isAudioType = file.type.startsWith('audio/') || file.type === '';
-    const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
+for (let file of files) {
+const isAudioType = file.type.startsWith('audio/') || file.type === '';
+const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
 
-    if (!isAudioType && !isAudioExtension) continue;
+if (!isAudioType && !isAudioExtension) continue;
 
-    // メタデータから曲名・アーティスト・ジャケットを自動抽出
-    const meta = await parseAudioMetadata(file);
+// メタデータから曲名・アーティスト・ジャケットを自動抽出
+const meta = await parseAudioMetadata(file);
 
-    const newSong = {
-      title: meta.title,
-      artist: meta.artist,
-      coverUrl: meta.coverUrl,
-      audioBlob: file,
-      addedAt: Date.now()
-    };
+const newSong = {
+title: meta.title,
+artist: meta.artist,
+coverUrl: meta.coverUrl,
+audioBlob: file,
+addedAt: Date.now()
+};
 
-    const saved = await saveSongToDB(newSong);
-    songsData.unshift(saved);
-    addedCount++;
-  }
+const saved = await saveSongToDB(newSong);
+songsData.unshift(saved);
+addedCount++;
+}
 
-  if (addedCount > 0) {
-    renderSongs();
-  } else {
-    alert('対応している音声ファイルが見つかりませんでした。');
-  }
+if (addedCount > 0) {
+renderSongs();
+} else {
+alert('対応している音声ファイルが見つかりませんでした。');
+}
 
-  document.getElementById('fileInput').value = '';
+document.getElementById('fileInput').value = '';
 }
 
 async function addNewManualSong() {
-  const titleInput = document.getElementById('inputTitle');
-  const artistInput = document.getElementById('inputArtist');
+const titleInput = document.getElementById('inputTitle');
+const artistInput = document.getElementById('inputArtist');
 
-  const title = titleInput.value.trim();
-  const artist = artistInput.value.trim() || '不明なアーティスト';
+const title = titleInput.value.trim();
+const artist = artistInput.value.trim() || '不明なアーティスト';
 
-  if (!title) {
-    alert('曲名を入力してください。');
-    return;
-  }
+if (!title) {
+alert('曲名を入力してください。');
+return;
+}
 
-  const newSong = {
-    title: title,
-    artist: artist,
-    coverUrl: null,
-    audioBlob: null,
-    addedAt: Date.now()
-  };
+const newSong = {
+title: title,
+artist: artist,
+coverUrl: null,
+audioBlob: null,
+addedAt: Date.now()
+};
 
-  const saved = await saveSongToDB(newSong);
-  songsData.unshift(saved);
+const saved = await saveSongToDB(newSong);
+songsData.unshift(saved);
 
-  titleInput.value = '';
-  artistInput.value = '';
+titleInput.value = '';
+artistInput.value = '';
 
-  renderSongs();
+renderSongs();
 }
 
 async function deleteSingleSong(id) {
-  if (!confirm('この楽曲を削除してもよろしいですか？')) return;
-  await deleteSongFromDB(id);
-  songsData = songsData.filter(s => s.id !== id);
-  selectedSongIds.delete(id);
+if (!confirm('この楽曲を削除してもよろしいですか？')) return;
+await deleteSongFromDB(id);
+songsData = songsData.filter(s => s.id !== id);
+selectedSongIds.delete(id);
 
-  if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === id) {
-    const audio = document.getElementById('audioPlayer');
-    audio.pause();
-    currentPlayingIndex = -1;
-    updatePlayerUI();
-  }
+if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === id) {
+const audio = document.getElementById('audioPlayer');
+audio.pause();
+currentPlayingIndex = -1;
+updatePlayerUI();
+}
 
-  renderSongs();
+renderSongs();
 }
 
 /* ==========================================
-   7. Batch Processing Functions
-   ========================================== */
+7. Batch Processing Functions
+========================================== */
 function toggleBatchMode() {
-  isBatchMode = !isBatchMode;
-  if (!isBatchMode) {
-    selectedSongIds.clear();
-  }
-  renderSongs();
+isBatchMode = !isBatchMode;
+if (!isBatchMode) {
+selectedSongIds.clear();
+}
+renderSongs();
 }
 
 function toggleSelectSong(id) {
-  if (selectedSongIds.has(id)) {
-    selectedSongIds.delete(id);
-  } else {
-    selectedSongIds.add(id);
-  }
-  renderSongs();
+if (selectedSongIds.has(id)) {
+selectedSongIds.delete(id);
+} else {
+selectedSongIds.add(id);
+}
+renderSongs();
 }
 
 function toggleSelectAll(checked) {
-  if (checked) {
-    songsData.forEach(s => selectedSongIds.add(s.id));
-  } else {
-    selectedSongIds.clear();
-  }
-  renderSongs();
+if (checked) {
+songsData.forEach(s => selectedSongIds.add(s.id));
+} else {
+selectedSongIds.clear();
+}
+renderSongs();
 }
 
 function updateBatchToolbarUI() {
-  const toolbar = document.getElementById('batchToolbar');
-  toolbar.classList.toggle('active', isBatchMode);
+const toolbar = document.getElementById('batchToolbar');
+toolbar.classList.toggle('active', isBatchMode);
 
-  const countText = document.getElementById('selectedCountText');
-  countText.innerText = `${selectedSongIds.size}件選択中`;
+const countText = document.getElementById('selectedCountText');
+countText.innerText = `${selectedSongIds.size}件選択中`;
 
-  const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-  if (selectAllCheckbox) {
-    selectAllCheckbox.checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
-  }
+const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+if (selectAllCheckbox) {
+selectAllCheckbox.checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
+}
 }
 
 function populatePlaylistDropdown() {
-  const select = document.getElementById('batchPlaylistSelect');
-  select.innerHTML = '<option value="">追加先...</option>';
-  playlistsData.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
-    select.appendChild(opt);
-  });
+const select = document.getElementById('batchPlaylistSelect');
+select.innerHTML = '<option value="">追加先...</option>';
+playlistsData.forEach(p => {
+const opt = document.createElement('option');
+opt.value = p.id;
+opt.textContent = p.name;
+select.appendChild(opt);
+});
 }
 
 async function executeBatchAddToPlaylist() {
-  const playlistId = Number(document.getElementById('batchPlaylistSelect').value);
-  if (!playlistId) {
-    alert('追加先のプレイリストを選択してください。');
-    return;
-  }
-  if (selectedSongIds.size === 0) {
-    alert('曲が選択されていません。');
-    return;
-  }
+const playlistId = Number(document.getElementById('batchPlaylistSelect').value);
+if (!playlistId) {
+alert('追加先のプレイリストを選択してください。');
+return;
+}
+if (selectedSongIds.size === 0) {
+alert('曲が選択されていません。');
+return;
+}
 
-  const playlist = playlistsData.find(p => p.id === playlistId);
-  if (playlist) {
-    const newIds = Array.from(selectedSongIds);
-    playlist.songIds = Array.from(new Set([...playlist.songIds, ...newIds]));
-    await savePlaylistToDB(playlist);
-    alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
-    selectedSongIds.clear();
-    toggleBatchMode();
-    renderPlaylists();
-  }
+const playlist = playlistsData.find(p => p.id === playlistId);
+if (playlist) {
+const newIds = Array.from(selectedSongIds);
+playlist.songIds = Array.from(new Set([...playlist.songIds, ...newIds]));
+await savePlaylistToDB(playlist);
+alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
+selectedSongIds.clear();
+toggleBatchMode();
+renderPlaylists();
+}
 }
 
 async function executeBatchDelete() {
-  if (selectedSongIds.size === 0) {
-    alert('曲が選択されていません。');
-    return;
-  }
+if (selectedSongIds.size === 0) {
+alert('曲が選択されていません。');
+return;
+}
 
-  if (!confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) return;
+if (!confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) return;
 
-  for (let id of selectedSongIds) {
-    await deleteSongFromDB(id);
-  }
+for (let id of selectedSongIds) {
+await deleteSongFromDB(id);
+}
 
-  songsData = songsData.filter(s => !selectedSongIds.has(s.id));
-  selectedSongIds.clear();
-  toggleBatchMode();
-  renderSongs();
+songsData = songsData.filter(s => !selectedSongIds.has(s.id));
+selectedSongIds.clear();
+toggleBatchMode();
+renderSongs();
 }
 
 /* ==========================================
-   8. Audio Player Core Logic
-   ========================================== */
+8. Audio Player Core Logic
+========================================== */
 function playSongById(id) {
-  const index = songsData.findIndex(s => s.id === id);
-  if (index !== -1) {
-    playSongAtIndex(index);
-  }
+const index = songsData.findIndex(s => s.id === id);
+if (index !== -1) {
+playSongAtIndex(index);
+}
 }
 
 function playSongAtIndex(index) {
-  if (index < 0 || index >= songsData.length) return;
+if (index < 0 || index >= songsData.length) return;
 
-  currentPlayingIndex = index;
-  const song = songsData[currentPlayingIndex];
+currentPlayingIndex = index;
+const song = songsData[currentPlayingIndex];
 
-  const audio = document.getElementById('audioPlayer');
+const audio = document.getElementById('audioPlayer');
 
-  if (currentAudioUrl) {
-    URL.revokeObjectURL(currentAudioUrl);
-    currentAudioUrl = null;
-  }
+if (currentAudioUrl) {
+URL.revokeObjectURL(currentAudioUrl);
+currentAudioUrl = null;
+}
 
-  if (song.audioBlob) {
-    currentAudioUrl = URL.createObjectURL(song.audioBlob);
-    audio.src = currentAudioUrl;
-    audio.play().catch(e => console.error(e));
-  } else {
-    alert('この楽曲には音声データが紐付けられていません。');
-    return;
-  }
+if (song.audioBlob) {
+currentAudioUrl = URL.createObjectURL(song.audioBlob);
+audio.src = currentAudioUrl;
+audio.play().catch(e => console.error(e));
+} else {
+alert('この楽曲には音声データが紐付けられていません。');
+return;
+}
 
-  updatePlayerUI();
-  renderSongs();
+updatePlayerUI();
+renderSongs();
 }
 
 function togglePlay() {
-  const audio = document.getElementById('audioPlayer');
-  if (currentPlayingIndex === -1) {
-    if (songsData.length > 0) playSongAtIndex(0);
-    return;
-  }
+const audio = document.getElementById('audioPlayer');
+if (currentPlayingIndex === -1) {
+if (songsData.length > 0) playSongAtIndex(0);
+return;
+}
 
-  if (audio.paused) {
-    audio.play();
-  } else {
-    audio.pause();
-  }
-  updatePlayerUI();
+if (audio.paused) {
+audio.play();
+} else {
+audio.pause();
+}
+updatePlayerUI();
 }
 
 function playNext() {
-  if (songsData.length === 0) return;
+if (songsData.length === 0) return;
 
-  if (isShuffle) {
-    const nextIndex = Math.floor(Math.random() * songsData.length);
-    playSongAtIndex(nextIndex);
-  } else {
-    let nextIndex = currentPlayingIndex + 1;
-    if (nextIndex >= songsData.length) {
-      if (repeatMode === 'ALL') {
-        nextIndex = 0;
-      } else {
-        return;
-      }
-    }
-    playSongAtIndex(nextIndex);
-  }
+if (isShuffle) {
+const nextIndex = Math.floor(Math.random() * songsData.length);
+playSongAtIndex(nextIndex);
+} else {
+let nextIndex = currentPlayingIndex + 1;
+if (nextIndex >= songsData.length) {
+if (repeatMode === 'ALL') {
+nextIndex = 0;
+} else {
+return;
+}
+}
+playSongAtIndex(nextIndex);
+}
 }
 
 function playPrev() {
-  if (songsData.length === 0) return;
+if (songsData.length === 0) return;
 
-  let prevIndex = currentPlayingIndex - 1;
-  if (prevIndex < 0) {
-    prevIndex = songsData.length - 1;
-  }
-  playSongAtIndex(prevIndex);
+let prevIndex = currentPlayingIndex - 1;
+if (prevIndex < 0) {
+prevIndex = songsData.length - 1;
+}
+playSongAtIndex(prevIndex);
 }
 
 function handleSongEnd() {
-  if (repeatMode === 'ONE') {
-    playSongAtIndex(currentPlayingIndex);
-  } else {
-    playNext();
-  }
+if (repeatMode === 'ONE') {
+playSongAtIndex(currentPlayingIndex);
+} else {
+playNext();
+}
 }
 
 function toggleShuffle() {
-  isShuffle = !isShuffle;
-  document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
-  document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
+isShuffle = !isShuffle;
+document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
+document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
 }
 
 function toggleRepeat() {
-  if (repeatMode === 'OFF') repeatMode = 'ALL';
-  else if (repeatMode === 'ALL') repeatMode = 'ONE';
-  else repeatMode = 'OFF';
+if (repeatMode === 'OFF') repeatMode = 'ALL';
+else if (repeatMode === 'ALL') repeatMode = 'ONE';
+else repeatMode = 'OFF';
 
-  const isBtnActive = repeatMode !== 'OFF';
-  const miniBtn = document.getElementById('miniRepeatBtn');
-  const fullBtn = document.getElementById('fullRepeatBtn');
+const isBtnActive = repeatMode !== 'OFF';
+const miniBtn = document.getElementById('miniRepeatBtn');
+const fullBtn = document.getElementById('fullRepeatBtn');
 
-  miniBtn.classList.toggle('active', isBtnActive);
-  fullBtn.classList.toggle('active', isBtnActive);
+miniBtn.classList.toggle('active', isBtnActive);
+fullBtn.classList.toggle('active', isBtnActive);
 
-  if (repeatMode === 'ONE') {
-    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
-    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
-  } else {
-    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
-    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
-  }
+if (repeatMode === 'ONE') {
+miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+} else {
+miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+}
 }
 
 function updateProgress() {
-  const audio = document.getElementById('audioPlayer');
-  if (!audio.duration) return;
+const audio = document.getElementById('audioPlayer');
+if (!audio.duration) return;
 
-  const pct = (audio.currentTime / audio.duration) * 100;
-  document.getElementById('miniProgressBar').style.width = `${pct}%`;
+const pct = (audio.currentTime / audio.duration) * 100;
+document.getElementById('miniProgressBar').style.width = `${pct}%`;
 
-  const fullSlider = document.getElementById('fullSeekSlider');
-  if (fullSlider) fullSlider.value = pct;
+const fullSlider = document.getElementById('fullSeekSlider');
+if (fullSlider) fullSlider.value = pct;
 
-  document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
-  document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
+document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
+document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
 }
 
 function seekMiniPlayer(e) {
-  const audio = document.getElementById('audioPlayer');
-  if (!audio.duration) return;
+const audio = document.getElementById('audioPlayer');
+if (!audio.duration) return;
 
-  const rect = e.currentTarget.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const width = rect.width;
+const rect = e.currentTarget.getBoundingClientRect();
+const clickX = e.clientX - rect.left;
+const width = rect.width;
 
-  audio.currentTime = (clickX / width) * audio.duration;
+audio.currentTime = (clickX / width) * audio.duration;
 }
 
 function onSeekSliderChange(val) {
-  const audio = document.getElementById('audioPlayer');
-  if (!audio.duration) return;
+const audio = document.getElementById('audioPlayer');
+if (!audio.duration) return;
 
-  audio.currentTime = (val / 100) * audio.duration;
+audio.currentTime = (val / 100) * audio.duration;
 }
 
 function setVolume(val) {
-  const audio = document.getElementById('audioPlayer');
-  audio.volume = val;
+const audio = document.getElementById('audioPlayer');
+audio.volume = val;
 }
 
 function updatePlayerUI() {
-  const audio = document.getElementById('audioPlayer');
-  const isPaused = audio.paused;
+const audio = document.getElementById('audioPlayer');
+const isPaused = audio.paused;
 
-  const song = songsData[currentPlayingIndex];
+const song = songsData[currentPlayingIndex];
 
-  const miniTitle = document.getElementById('playerMiniTitle');
-  const miniArtist = document.getElementById('playerMiniArtist');
-  const miniCover = document.getElementById('playerMiniCover');
-  const miniPlayIcon = document.getElementById('miniPlayBtnIcon');
+const miniTitle = document.getElementById('playerMiniTitle');
+const miniArtist = document.getElementById('playerMiniArtist');
+const miniCover = document.getElementById('playerMiniCover');
+const miniPlayIcon = document.getElementById('miniPlayBtnIcon');
 
-  const fullTitle = document.getElementById('fullPlayerTitle');
-  const fullArtist = document.getElementById('fullPlayerArtist');
-  const fullCover = document.getElementById('fullPlayerCover');
-  const fullPlayIcon = document.getElementById('fullPlayBtnIcon');
+const fullTitle = document.getElementById('fullPlayerTitle');
+const fullArtist = document.getElementById('fullPlayerArtist');
+const fullCover = document.getElementById('fullPlayerCover');
+const fullPlayIcon = document.getElementById('fullPlayBtnIcon');
 
-  if (song) {
-    miniTitle.innerText = song.title;
-    miniArtist.innerText = song.artist;
-    fullTitle.innerText = song.title;
-    fullArtist.innerText = song.artist;
+if (song) {
+miniTitle.innerText = song.title;
+miniArtist.innerText = song.artist;
+fullTitle.innerText = song.title;
+fullArtist.innerText = song.artist;
 
-    if (song.coverUrl) {
-      miniCover.innerHTML = `<img src="${song.coverUrl}">`;
-      fullCover.innerHTML = `<img src="${song.coverUrl}">`;
-    } else {
-      miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
-      fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
-    }
+if (song.coverUrl) {
+miniCover.innerHTML = `<img src="${song.coverUrl}">`;
+fullCover.innerHTML = `<img src="${song.coverUrl}">`;
+} else {
+miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
+fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
+}
 
-    // ロック画面・通知領域の情報更新
-    setupMediaSession(song);
-  }
+// ロック画面・通知領域の情報更新
+setupMediaSession(song);
+}
 
-  miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
-  fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
+miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
+fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
 }
 
 // Media Session API のセットアップ関数（ロック画面・通知からの操作対応）
 function setupMediaSession(song) {
-  if (!('mediaSession' in navigator)) return;
+if (!('mediaSession' in navigator)) return;
 
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: song.title,
-    artist: song.artist,
-    artwork: song.coverUrl ? [
-      { src: song.coverUrl, sizes: '512x512', type: 'image/png' }
-    ] : []
-  });
+navigator.mediaSession.metadata = new MediaMetadata({
+title: song.title,
+artist: song.artist,
+artwork: song.coverUrl ? [
+{ src: song.coverUrl, sizes: '512x512', type: 'image/png' }
+] : []
+});
 
-  navigator.mediaSession.setActionHandler('play', () => togglePlay());
-  navigator.mediaSession.setActionHandler('pause', () => togglePlay());
-  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
-  navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+navigator.mediaSession.setActionHandler('play', () => togglePlay());
+navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
 }
 
 /* ==========================================
-   9. Modals & Helper Functions
-   ========================================== */
+9. Modals & Helper Functions
+========================================== */
 function openFullPlayer() {
-  document.getElementById('fullPlayerModal').classList.add('active');
+document.getElementById('fullPlayerModal').classList.add('active');
 }
 
 function closeFullPlayer() {
-  document.getElementById('fullPlayerModal').classList.remove('active');
+document.getElementById('fullPlayerModal').classList.remove('active');
 }
 
 function openCreatePlaylistModal() {
-  const modal = new bootstrap.Modal(document.getElementById('createPlaylistModal'));
-  modal.show();
+const modal = new bootstrap.Modal(document.getElementById('createPlaylistModal'));
+modal.show();
 }
 
 async function saveNewPlaylist() {
-  const input = document.getElementById('newPlaylistNameInput');
-  const name = input.value.trim();
-  if (!name) return;
+const input = document.getElementById('newPlaylistNameInput');
+const name = input.value.trim();
+if (!name) return;
 
-  const newPlaylist = {
-    name: name,
-    songIds: []
-  };
+const newPlaylist = {
+name: name,
+songIds: []
+};
 
-  await savePlaylistToDB(newPlaylist);
-  await loadPlaylistsFromDB();
+await savePlaylistToDB(newPlaylist);
+await loadPlaylistsFromDB();
 
-  input.value = '';
-  bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
-  populatePlaylistDropdown();
-  renderPlaylists();
+input.value = '';
+bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
+populatePlaylistDropdown();
+renderPlaylists();
 }
 
 function openPlaylistDetail(id) {
-  const playlist = playlistsData.find(p => p.id === id);
-  if (!playlist) return;
+const playlist = playlistsData.find(p => p.id === id);
+if (!playlist) return;
 
-  document.getElementById('playlistDetailTitle').innerText = playlist.name;
-  const container = document.getElementById('playlistSongListContainer');
-  container.innerHTML = '';
+document.getElementById('playlistDetailTitle').innerText = playlist.name;
+const container = document.getElementById('playlistSongListContainer');
+container.innerHTML = '';
 
-  const playlistSongs = songsData.filter(s => playlist.songIds.includes(s.id));
+const playlistSongs = songsData.filter(s => playlist.songIds.includes(s.id));
 
-  if (playlistSongs.length === 0) {
-    container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
-  } else {
-    playlistSongs.forEach(song => {
-      const li = document.createElement('li');
-      li.className = 'song-item';
-      li.innerHTML = `
-        <div class="song-cover" onclick="playSongById(${song.id})">
-          ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid fa-music text-secondary"></i>`}
-        </div>
-        <div class="song-details" onclick="playSongById(${song.id})">
-          <div class="song-title">${escapeHtml(song.title)}</div>
-          <div class="song-artist">${escapeHtml(song.artist)}</div>
-        </div>
-      `;
-      container.appendChild(li);
-    });
-  }
-
-  const modal = new bootstrap.Modal(document.getElementById('playlistDetailModal'));
-  modal.show();
+if (playlistSongs.length === 0) {
+container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
+} else {
+playlistSongs.forEach(song => {
+const li = document.createElement('li');
+li.className = 'song-item';
+li.innerHTML = `
+<div class="song-cover" onclick="playSongById(${song.id})">
+${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid fa-music text-secondary"></i>`}
+</div>
+<div class="song-details" onclick="playSongById(${song.id})">
+<div class="song-title">${escapeHtml(song.title)}</div>
+<div class="song-artist">${escapeHtml(song.artist)}</div>
+</div>
+`;
+container.appendChild(li);
+});
 }
 
-    // 再生画面のリストボタン押下時の処理
+const modal = new bootstrap.Modal(document.getElementById('playlistDetailModal'));
+modal.show();
+}
+
+// 再生画面のリストボタン押下時の処理
 function openCurrentPlaylistModal() {
-  // 例: プレイリストタブに切り替えてフルスクリーンプレイヤーを閉じる場合
-  switchTab('playlists');
-  if (typeof closeFullscreenPlayer === 'function') {
-    closeFullscreenPlayer();
-  }
+// 例: プレイリストタブに切り替えてフルスクリーンプレイヤーを閉じる場合
+switchTab('playlists');
+if (typeof closeFullscreenPlayer === 'function') {
+closeFullscreenPlayer();
+}
 }
 function openSettingsModal() {
-  const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
-  modal.show();
+const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+modal.show();
 }
 
 async function clearAllData() {
-  if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
+if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
 
-  const tx1 = db.transaction('songs', 'readwrite');
-  tx1.objectStore('songs').clear();
+const tx1 = db.transaction('songs', 'readwrite');
+tx1.objectStore('songs').clear();
 
-  const tx2 = db.transaction('playlists', 'readwrite');
-  tx2.objectStore('playlists').clear();
+const tx2 = db.transaction('playlists', 'readwrite');
+tx2.objectStore('playlists').clear();
 
-  songsData = [];
-  playlistsData = [];
+songsData = [];
+playlistsData = [];
 
-  renderSongs();
-  renderPlaylists();
+renderSongs();
+renderPlaylists();
 
-  bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
-  alert('すべてのデータを削除しました。');
+bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+alert('すべてのデータを削除しました。');
 }
 
 function formatTime(sec) {
-  if (isNaN(sec)) return '0:00';
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
+if (isNaN(sec)) return '0:00';
+const m = Math.floor(sec / 60);
+const s = Math.floor(sec % 60);
+return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
 function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+if (!str) return '';
+return str.replace(/&/g, '&amp;')
+.replace(/</g, '&lt;')
+.replace(/>/g, '&gt;')
+.replace(/"/g, '&quot;')
+.replace(/'/g, '&#039;');
 }
-  </script>
+
+// 音量スライダーの連動処理
+const audio = document.getElementById('audioPlayer');
+const volumeSlider = document.getElementById('volumeSlider');
+
+if (volumeSlider && audio) {
+volumeSlider.addEventListener('input', (e) => {
+audio.volume = e.target.value / 100;
+});
+}
+</script>
 </body>
 </html>
