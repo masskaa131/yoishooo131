@@ -863,6 +863,11 @@ let activeTab = 'songs';
 let isBatchMode = false;
 let selectedSongIds = new Set();
 
+  // Web Audio API用の変数を追加
+let audioCtx;
+let gainNode;
+let trackSource;
+  
 // Playback State
 let currentPlayingIndex = -1;
 let isShuffle = false;
@@ -1349,6 +1354,7 @@ return;
 }
 
 if (audio.paused) {
+  initWebAudio(); // この1行を追加
 audio.play();
 } else {
 audio.pause();
@@ -1374,7 +1380,24 @@ return;
 playSongAtIndex(nextIndex);
 }
 }
+function initWebAudio() {
+  // 初回再生時にAudioContextを生成（iOS対策）
+  if (!audioCtx) {
 
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = audioCtx.createGain();
+    trackSource = audioCtx.createMediaElementSource(audio);
+    
+    // audio -> gainNode -> 出力(スピーカー) の順に接続
+    trackSource.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+  }
+  
+  // iOSの自動再生制限対策（Stateがsuspendedならresumeする）
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
 function playPrev() {
 if (songsData.length === 0) return;
 
@@ -1643,8 +1666,16 @@ const audio = document.getElementById('audioPlayer');
 const volumeSlider = document.getElementById('volumeSlider');
 if (volumeSlider && audio) {
   volumeSlider.addEventListener('input', (e) => {
-    audio.volume = parseFloat(e.target.value); // /100 を削除
-  });
+  const val = parseFloat(e.target.value);
+  
+  // Web Audio APIが初期化されている場合は GainNode で音量を変更
+  if (gainNode) {
+    gainNode.gain.value = val;
+  } else {
+    // フォールバック（PC等）
+    audio.volume = val;
+  }
+});
 }
 </script>
 </body>
