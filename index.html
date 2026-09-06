@@ -981,7 +981,11 @@ let repeatMode = 'OFF'; // 'OFF' | 'ALL' | 'ONE'
 let currentAudioUrl = null;
 let editingSongId = null;
 let isSeeking = false;
-
+// 追加：再生速度の状態保持
+let currentPlaybackRate = 1.0;
+  // 追加：スリープタイマー管理
+let sleepTimerId = null;
+let sleepTimerMode = null; // 分数（数値）または 'end'
 /* ==========================================
 3. Lifecycle & Initialization
 ========================================== */
@@ -1516,7 +1520,41 @@ function playSongById(id) {
     playSongAtIndex(index);
   }
 }
-
+// 追加：スリープタイマーを設定する関数
+function setSleepTimer(minutes) {
+  const audio = document.getElementById('audioPlayer');
+  
+  if (sleepTimerId) {
+    clearTimeout(sleepTimerId);
+    sleepTimerId = null;
+  }
+  
+  if (minutes === 'end') {
+    sleepTimerMode = 'end';
+    alert('現在の曲の終了時に再生を停止します');
+    return;
+  }
+  
+  const minNum = parseInt(minutes, 10);
+  if (isNaN(minNum) || minNum <= 0) {
+    sleepTimerMode = null;
+    alert('スリープタイマーを解除しました');
+    return;
+  }
+  
+  sleepTimerMode = minNum;
+  alert(`${minNum}分後に再生を停止します`);
+  
+  sleepTimerId = setTimeout(() => {
+    if (audio) {
+      audio.pause();
+      updatePlayerUI();
+    }
+    sleepTimerId = null;
+    sleepTimerMode = null;
+    alert('スリープタイマーにより再生を停止しました');
+  }, minNum * 60 * 1000);
+}
 function playSongAtIndex(index) {
   if (index < 0 || index >= songsData.length) return;
 
@@ -1534,9 +1572,12 @@ function playSongAtIndex(index) {
     currentAudioUrl = URL.createObjectURL(song.audioBlob);
     audio.src = currentAudioUrl;
     
-    // ▼【ここに追加】曲が変わるたびに再生速度とピッチのズレを強制リセット
-    audio.playbackRate = 1.0;
-    audio.defaultPlaybackRate = 1.0;
+// 変更：固定値 1.0 ではなく、保持している currentPlaybackRate を適用する
+    audio.playbackRate = currentPlaybackRate;
+    audio.defaultPlaybackRate = currentPlaybackRate;
+    audio.preservesPitch = true;
+    audio.webkitPreservesPitch = true;
+    audio.mozPreservesPitch = true;
 
     initWebAudio();
     audio.play().catch(e => console.error(e));
@@ -1612,7 +1653,17 @@ function playPrev() {
   playSongAtIndex(prevIndex);
 }
 
+// 修正：既存の handleSongEnd を以下のように書き換え
 function handleSongEnd() {
+  // 追加：曲終わりスリープタイマーのチェック
+  if (sleepTimerMode === 'end') {
+    const audio = document.getElementById('audioPlayer');
+    audio.pause();
+    sleepTimerMode = null;
+    updatePlayerUI();
+    return;
+  }
+
   if (repeatMode === 'ONE') {
     playSongAtIndex(currentPlayingIndex);
   } else {
@@ -1690,7 +1741,22 @@ function setVolume(val) {
     audio.volume = numericVal;
   }
 }
-
+// 追加：再生速度を変更する関数
+function setPlaybackRate(rate) {
+  const audio = document.getElementById('audioPlayer');
+  currentPlaybackRate = parseFloat(rate);
+  if (audio) {
+    audio.playbackRate = currentPlaybackRate;
+    audio.defaultPlaybackRate = currentPlaybackRate;
+    audio.preservesPitch = true;
+    audio.webkitPreservesPitch = true;
+    audio.mozPreservesPitch = true;
+  }
+  const rateText = document.getElementById('playbackRateText');
+  if (rateText) {
+    rateText.innerText = `${currentPlaybackRate.toFixed(1)}x`;
+  }
+}
 function updatePlayerUI() {
   const audio = document.getElementById('audioPlayer');
   const isPaused = audio.paused;
