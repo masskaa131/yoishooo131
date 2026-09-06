@@ -913,14 +913,26 @@
     /* ==========================================
        5. UI Navigation & Rendering
        ========================================== */
-    function switchTab(tab) {
-      activeTab = tab;
-      document.getElementById('tabSongsBtn').classList.toggle('active', tab === 'songs');
-      document.getElementById('tabPlaylistsBtn').classList.toggle('active', tab === 'playlists');
+function switchTab(tab) {
+  activeTab = tab;
 
-      document.getElementById('songsTabContent').style.display = tab === 'songs' ? 'block' : 'none';
-      document.getElementById('playlistsTabContent').style.display = tab === 'playlists' ? 'block' : 'none';
-    }
+  // タブボタンの表示切り替え
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // コンテンツの切り替え
+  const songsTab = document.getElementById('songsTabContent');
+  const playlistsTab = document.getElementById('playlistsTabContent');
+
+  if (songsTab) songsTab.style.display = tab === 'songs' ? 'block' : 'none';
+  if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : 'none';
+
+  // プレイリストタブが開かれたら最新状態に描画
+  if (tab === 'playlists') {
+    renderPlaylists();
+  }
+}
 
    function renderSongs() {
       const container = document.getElementById('songListContainer');
@@ -977,7 +989,7 @@
 
 // プレイリスト一覧の描画（削除ボタンを追加）
 function renderPlaylists() {
-  const container = document.getElementById('playlistContainer');
+ const container = document.getElementById('playlistGrid');
   if (!container) return;
   container.innerHTML = '';
 
@@ -1534,6 +1546,14 @@ function openPlaylistDetail(id) {
   modal.show();
 }
 
+    // 再生画面のリストボタン押下時の処理
+function openCurrentPlaylistModal() {
+  // 例: プレイリストタブに切り替えてフルスクリーンプレイヤーを閉じる場合
+  switchTab('playlists');
+  if (typeof closeFullscreenPlayer === 'function') {
+    closeFullscreenPlayer();
+  }
+}
 function openSettingsModal() {
   const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
   modal.show();
