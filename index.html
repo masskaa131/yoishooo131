@@ -1439,10 +1439,31 @@ function updatePlayerUI() {
       miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
       fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
     }
+
+    // ロック画面・通知領域の情報更新
+    setupMediaSession(song);
   }
 
   miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
   fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
+}
+
+// Media Session API のセットアップ関数（ロック画面・通知からの操作対応）
+function setupMediaSession(song) {
+  if (!('mediaSession' in navigator)) return;
+
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: song.title,
+    artist: song.artist,
+    artwork: song.coverUrl ? [
+      { src: song.coverUrl, sizes: '512x512', type: 'image/png' }
+    ] : []
+  });
+
+  navigator.mediaSession.setActionHandler('play', () => togglePlay());
+  navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+  navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
 }
 
 /* ==========================================
