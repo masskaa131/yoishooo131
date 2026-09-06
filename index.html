@@ -106,6 +106,7 @@ padding: 16px 20px;
 display: flex;
 justify-content: space-between;
 align-items: center;
+padding-top: env(safe-area-inset-top, 20px);
 }
 
 .app-title {
@@ -140,7 +141,7 @@ transition: all 0.2s;
 background: var(--accent-color);
 color: #fff;
 }
-/* 検索インプットの文字色と背景色を明瞭化 */
+
 .search-bar input,
 input[type="search"],
 input[type="text"] {
@@ -152,18 +153,10 @@ input::placeholder {
 color: #bbb !important;
 }
 
-  /* <style> タグ内に追記 */
-
-/* アプリ全体、または一番上のヘッダー要素に適用 */
-header, .header, body {
-  /* iPhoneのステータスバーの高さを自動調整（非対応端末用フォールバック付き） */
-  padding-top: env(safe-area-inset-top, 20px);
-}
-
-/* フルスクリーンプレイヤーなどを表示する場合も同様に適用 */
 .fullscreen-player {
-  padding-top: env(safe-area-inset-top, 20px);
+padding-top: env(safe-area-inset-top, 20px);
 }
+
 /* ==========================================
 3. Batch Operation Toolbar
 ========================================== */
@@ -303,6 +296,7 @@ padding: 14px;
 text-align: center;
 cursor: pointer;
 transition: transform 0.2s, background 0.2s;
+position: relative;
 }
 
 .playlist-card:hover {
@@ -321,9 +315,32 @@ justify-content: center;
 font-size: 38px;
 color: var(--accent-color);
 margin-bottom: 10px;
+overflow: hidden;
 }
 
-/* Drop Zone Style */
+.playlist-cover-placeholder img {
+width: 100%;
+height: 100%;
+object-fit: cover;
+}
+
+.playlist-delete-btn {
+position: absolute;
+top: 8px;
+right: 8px;
+background: rgba(0,0,0,0.6);
+color: #fff;
+border: none;
+border-radius: 50%;
+width: 28px;
+height: 28px;
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 12px;
+cursor: pointer;
+}
+
 .drop-zone {
 border: 2px dashed var(--border-glass);
 border-radius: 16px;
@@ -436,7 +453,6 @@ font-size: 26px;
 color: var(--text-main);
 }
 
-/* Mini Progress Bar */
 .mini-progress-container {
 position: absolute;
 top: 0;
@@ -577,7 +593,6 @@ accent-color: var(--text-sub);
 height: 4px;
 }
 
-/* Form UI Customization */
 .form-control-dark {
 background: rgba(255, 255, 255, 0.08);
 border: 1px solid var(--border-glass);
@@ -591,7 +606,7 @@ color: #fff;
 border-color: var(--accent-color);
 box-shadow: none;
 }
-/* 再生中リストモーダル用スタイル */
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -633,6 +648,7 @@ box-shadow: none;
   font-size: 24px;
   cursor: pointer;
 }
+
 @keyframes fadeIn {
 from { opacity: 0; transform: translateY(-6px); }
 to { opacity: 1; transform: translateY(0); }
@@ -812,12 +828,13 @@ to { opacity: 1; transform: translateY(0); }
 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <div class="modal-body">
-<input type="text" id="newPlaylistNameInput" class="form-control form-control-dark" placeholder="プレイリスト名">
-</div>
-  <!-- ★ここに追加★ -->
 <div class="mb-3">
-  <label class="form-label small text-secondary">カバー画像</label>
-  <input type="file" id="playlistCoverInput" accept="image/*" class="form-control">
+  <input type="text" id="newPlaylistNameInput" class="form-control form-control-dark" placeholder="プレイリスト名">
+</div>
+<div class="mb-3">
+  <label class="form-label small text-secondary">カバー画像 (任意)</label>
+  <input type="file" id="playlistCoverInput" accept="image/*" class="form-control form-control-dark">
+</div>
 </div>
 <div class="modal-footer border-0">
 <button type="button" class="btn btn-sm btn-outline-light rounded-pill" data-bs-dismiss="modal">キャンセル</button>
@@ -858,20 +875,19 @@ to { opacity: 1; transform: translateY(0); }
 </div>
 </div>
 
-  <!-- 再生中プレイリスト用モーダル -->
+<!-- 再生中プレイリスト用モーダル -->
 <div id="currentPlaylistModal" class="modal-overlay" style="display: none;">
   <div class="modal-content">
     <div class="modal-header">
       <h3>再生中のリスト</h3>
       <button class="close-btn" onclick="closeCurrentPlaylistModal()">×</button>
     </div>
-    <div id="currentPlaylistItems" class="song-list">
-      <!-- JavaScriptで動的にリスト生成 -->
-    </div>
+    <div id="currentPlaylistItems" class="song-list"></div>
   </div>
 </div>
 
-  <div id="editSongModal" class="modal-overlay" style="display: none;">
+<!-- 楽曲編集モーダル -->
+<div id="editSongModal" class="modal-overlay" style="display: none;">
   <div class="modal-content">
     <div class="modal-header">
       <h5 class="m-0">楽曲情報の編集</h5>
@@ -879,13 +895,14 @@ to { opacity: 1; transform: translateY(0); }
     </div>
     <div class="modal-body">
       <label class="form-label small text-secondary">曲名</label>
-      <input type="text" id="editSongTitle" class="form-control mb-3">
+      <input type="text" id="editSongTitle" class="form-control form-control-dark mb-3">
       <label class="form-label small text-secondary">アーティスト名</label>
-      <input type="text" id="editSongArtist" class="form-control mb-3">
+      <input type="text" id="editSongArtist" class="form-control form-control-dark mb-3">
       <button onclick="saveSongEdit()" class="btn btn-danger w-100">保存する</button>
     </div>
   </div>
 </div>
+
 <!-- JavaScript Modules & Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -925,7 +942,7 @@ let activeTab = 'songs';
 let isBatchMode = false;
 let selectedSongIds = new Set();
 
-  // Web Audio API用の変数を追加
+// Web Audio API
 let audioCtx;
 let gainNode;
 let trackSource;
@@ -935,6 +952,8 @@ let currentPlayingIndex = -1;
 let isShuffle = false;
 let repeatMode = 'OFF'; // 'OFF' | 'ALL' | 'ONE'
 let currentAudioUrl = null;
+let editingSongId = null;
+let isSeeking = false;
 
 /* ==========================================
 3. Lifecycle & Initialization
@@ -944,6 +963,7 @@ await initDB();
 await loadSongsFromDB();
 await loadPlaylistsFromDB();
 setupDragAndDrop();
+setupAudioErrorHandling();
 populatePlaylistDropdown();
 renderSongs();
 renderPlaylists();
@@ -972,10 +992,9 @@ const req = store.getAll();
 req.onsuccess = () => {
 playlistsData = req.result || [];
 if (playlistsData.length === 0) {
-// Preset Default Playlists
 playlistsData = [
-{ id: 1, name: 'お気に入り', songIds: [] },
-{ id: 2, name: 'ドライブ', songIds: [] }
+{ id: 1, name: 'お気に入り', coverUrl: '', songIds: [] },
+{ id: 2, name: 'ドライブ', coverUrl: '', songIds: [] }
 ];
 playlistsData.forEach(p => savePlaylistToDB(p));
 }
@@ -1018,7 +1037,6 @@ store.put(playlist).onsuccess = () => resolve();
 function switchTab(tab) {
   activeTab = tab;
 
-  // '.tab-btn' を '.nav-tab-btn' に修正
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     if (btn.dataset.tab === tab) {
       btn.classList.add('active');
@@ -1079,8 +1097,8 @@ ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlayi
 <div class="song-artist">${escapeHtml(song.artist)}</div>
 </div>
 <div class="song-actions">
+<button class="btn-action-icon" onclick="openEditSongModal(${song.id})"><i class="fa-solid fa-pen"></i></button>
 <button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
-<button onclick="openEditSongModal('${song.id}')"><i class="fa-solid fa-pen"></i></button>
 </div>
 `;
 container.appendChild(li);
@@ -1089,47 +1107,53 @@ container.appendChild(li);
 updateBatchToolbarUI();
 }
 
-// プレイリスト一覧の描画（削除ボタンを追加）
 function renderPlaylists() {
-  const container = document.getElementById('playlistsContainer'); // 取得先名は既存に合わせてください
+  const container = document.getElementById('playlistGrid');
+  if (!container) return;
   container.innerHTML = '';
 
-  playlistsData.forEach(playlist => {
-    // ★サムネイルがあるか判断してHTMLを作る処理を追加★
-    const coverHTML = playlist.coverUrl 
-      ? `<img src="${playlist.coverUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">`
-      : `<i class="fa-solid fa-music text-secondary"></i>`;
+  if (playlistsData.length === 0) {
+    container.innerHTML = `<div class="col-12 text-center text-muted py-4 small">プレイリストがありません</div>`;
+    return;
+  }
 
-    const div = document.createElement('div');
-    div.className = 'playlist-item';
-    div.innerHTML = `
-      <div class="playlist-cover">
-        ${coverHTML} <!-- ★既存のアイコン部分を coverHTML に置き換え★ -->
+  playlistsData.forEach(playlist => {
+    const coverHTML = playlist.coverUrl 
+      ? `<img src="${playlist.coverUrl}">`
+      : `<i class="fa-solid fa-music"></i>`;
+
+    const card = document.createElement('div');
+    card.className = 'playlist-card';
+    card.innerHTML = `
+      <button class="playlist-delete-btn" onclick="event.stopPropagation(); deletePlaylist(${playlist.id})" title="削除">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div class="playlist-cover-placeholder">
+        ${coverHTML}
       </div>
-      <div class="playlist-name">${escapeHtml(playlist.name)}</div>
+      <div class="fw-bold small text-truncate">${escapeHtml(playlist.name)}</div>
+      <div class="text-muted style-sub" style="font-size: 11px;">${playlist.songIds ? playlist.songIds.length : 0}曲</div>
     `;
-    container.appendChild(div);
+    card.onclick = () => openPlaylistDetail(playlist.id);
+    container.appendChild(card);
   });
 }
 
-// プレイリスト削除処理
 async function deletePlaylist(id) {
 const playlist = playlistsData.find(p => p.id === id);
 const name = playlist ? playlist.name : 'このプレイリスト';
 
 if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
 
-// IndexedDBから削除
 const tx = db.transaction('playlists', 'readwrite');
-tx.objectStore('playlists').delete(id);
+await tx.objectStore('playlists').delete(id);
 
-// ローカルデータ更新
 playlistsData = playlistsData.filter(p => p.id !== id);
 
-// UI再描画
 populatePlaylistDropdown();
 renderPlaylists();
 }
+
 /* ==========================================
 6. File Import & Processing
 ========================================== */
@@ -1159,7 +1183,6 @@ handleFileImport(dt.files);
 });
 }
 
-// MP3からID3タグ（曲名・アーティスト・ジャケット画像）を取得
 function parseAudioMetadata(file) {
 return new Promise((resolve) => {
 const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
@@ -1204,7 +1227,6 @@ const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
 
 if (!isAudioType && !isAudioExtension) continue;
 
-// メタデータから曲名・アーティスト・ジャケットを自動抽出
 const meta = await parseAudioMetadata(file);
 
 const newSong = {
@@ -1274,9 +1296,6 @@ updatePlayerUI();
 renderSongs();
 }
 
-  let editingSongId = null;
-
-// 編集モーダルを開く
 function openEditSongModal(songId) {
   const song = songsData.find(s => s.id === songId);
   if (!song) return;
@@ -1292,7 +1311,6 @@ function closeEditSongModal() {
   editingSongId = null;
 }
 
-// IndexedDBおよびメモリ上のデータを更新
 async function saveSongEdit() {
   if (!editingSongId) return;
 
@@ -1304,19 +1322,18 @@ async function saveSongEdit() {
     song.title = newTitle || 'Unknown Title';
     song.artist = newArtist || 'Unknown Artist';
 
-    // IndexedDBへ保存（ストア名 'songs' を使用している想定）
     const tx = db.transaction('songs', 'readwrite');
     await tx.objectStore('songs').put(song);
 
-    // UI再描画
     renderSongs();
     if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex].id === editingSongId) {
-      updateNowPlayingUI();
+      updatePlayerUI();
     }
   }
 
   closeEditSongModal();
 }
+
 /* ==========================================
 7. Batch Processing Functions
 ========================================== */
@@ -1384,7 +1401,7 @@ return;
 const playlist = playlistsData.find(p => p.id === playlistId);
 if (playlist) {
 const newIds = Array.from(selectedSongIds);
-playlist.songIds = Array.from(new Set([...playlist.songIds, ...newIds]));
+playlist.songIds = Array.from(new Set([...(playlist.songIds || []), ...newIds]));
 await savePlaylistToDB(playlist);
 alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
 selectedSongIds.clear();
@@ -1437,6 +1454,7 @@ currentAudioUrl = null;
 if (song.audioBlob) {
 currentAudioUrl = URL.createObjectURL(song.audioBlob);
 audio.src = currentAudioUrl;
+initWebAudio();
 audio.play().catch(e => console.error(e));
 } else {
 alert('この楽曲には音声データが紐付けられていません。');
@@ -1455,10 +1473,10 @@ return;
 }
 
 if (audio.paused) {
-  initWebAudio(); // この1行を追加
-audio.play();
+  initWebAudio();
+  audio.play();
 } else {
-audio.pause();
+  audio.pause();
 }
 updatePlayerUI();
 }
@@ -1481,6 +1499,7 @@ return;
 playSongAtIndex(nextIndex);
 }
 }
+
 function initWebAudio() {
   const audio = document.getElementById('audioPlayer');
   if (!audio) return;
@@ -1498,6 +1517,7 @@ function initWebAudio() {
     audioCtx.resume();
   }
 }
+
 function playPrev() {
 if (songsData.length === 0) return;
 
@@ -1551,7 +1571,9 @@ const pct = (audio.currentTime / audio.duration) * 100;
 document.getElementById('miniProgressBar').style.width = `${pct}%`;
 
 const fullSlider = document.getElementById('fullSeekSlider');
-if (fullSlider) fullSlider.value = pct;
+if (fullSlider && !isSeeking) {
+  fullSlider.value = pct;
+}
 
 document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
 document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
@@ -1577,7 +1599,12 @@ audio.currentTime = (val / 100) * audio.duration;
 
 function setVolume(val) {
 const audio = document.getElementById('audioPlayer');
-audio.volume = val;
+const numericVal = parseFloat(val);
+if (gainNode) {
+  gainNode.gain.value = numericVal;
+} else if (audio) {
+  audio.volume = numericVal;
+}
 }
 
 function updatePlayerUI() {
@@ -1610,7 +1637,6 @@ miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
 fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
 }
 
-// ロック画面・通知領域の情報更新
 setupMediaSession(song);
 }
 
@@ -1618,7 +1644,6 @@ miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
 fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
 }
 
-// Media Session API のセットアップ関数（ロック画面・通知からの操作対応）
 function setupMediaSession(song) {
 if (!('mediaSession' in navigator)) return;
 
@@ -1634,6 +1659,25 @@ navigator.mediaSession.setActionHandler('play', () => togglePlay());
 navigator.mediaSession.setActionHandler('pause', () => togglePlay());
 navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
 navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+}
+
+function setupAudioErrorHandling() {
+  const audio = document.getElementById('audioPlayer');
+  if (!audio) return;
+
+  audio.onerror = (e) => {
+    console.error("音声の読み込みエラーが発生しました", e);
+    alert("この楽曲を再生できませんでした。次の曲へ移動します。");
+    playNext();
+  };
+
+  const fullSlider = document.getElementById('fullSeekSlider');
+  if (fullSlider) {
+    fullSlider.addEventListener('mousedown', () => { isSeeking = true; });
+    fullSlider.addEventListener('touchstart', () => { isSeeking = true; });
+    fullSlider.addEventListener('change', () => { isSeeking = false; });
+    fullSlider.addEventListener('touchend', () => { isSeeking = false; });
+  }
 }
 
 /* ==========================================
@@ -1653,19 +1697,36 @@ modal.show();
 }
 
 async function saveNewPlaylist() {
-const input = document.getElementById('newPlaylistNameInput');
-const name = input.value.trim();
-if (!name) return;
+const nameInput = document.getElementById('newPlaylistNameInput');
+const coverInput = document.getElementById('playlistCoverInput');
+
+const name = nameInput.value.trim();
+if (!name) {
+  alert('プレイリスト名を入力してください。');
+  return;
+}
+
+let coverUrl = '';
+if (coverInput && coverInput.files[0]) {
+  try {
+    coverUrl = await readFileAsDataURL(coverInput.files[0]);
+  } catch (e) {
+    console.error("画像の読み込みに失敗しました", e);
+  }
+}
 
 const newPlaylist = {
-name: name,
-songIds: []
+  name: name,
+  coverUrl: coverUrl,
+  songIds: []
 };
 
 await savePlaylistToDB(newPlaylist);
 await loadPlaylistsFromDB();
 
-input.value = '';
+nameInput.value = '';
+if (coverInput) coverInput.value = '';
+
 bootstrap.Modal.getInstance(document.getElementById('createPlaylistModal')).hide();
 populatePlaylistDropdown();
 renderPlaylists();
@@ -1679,7 +1740,7 @@ document.getElementById('playlistDetailTitle').innerText = playlist.name;
 const container = document.getElementById('playlistSongListContainer');
 container.innerHTML = '';
 
-const playlistSongs = songsData.filter(s => playlist.songIds.includes(s.id));
+const playlistSongs = songsData.filter(s => (playlist.songIds || []).includes(s.id));
 
 if (playlistSongs.length === 0) {
 container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
@@ -1704,17 +1765,15 @@ const modal = new bootstrap.Modal(document.getElementById('playlistDetailModal')
 modal.show();
 }
 
-// 再生画面のリストボタン押下時の処理
 function openCurrentPlaylistModal() {
   const modal = document.getElementById('currentPlaylistModal');
   if (modal) {
     renderCurrentPlaylist();
     modal.style.display = 'flex';
   }
-  if (typeof closeFullPlayer === 'function') {
-    closeFullPlayer();
-  }
+  closeFullPlayer();
 }
+
 function renderCurrentPlaylist() {
   const container = document.getElementById('currentPlaylistItems');
   if (!container) return;
@@ -1741,10 +1800,12 @@ function renderCurrentPlaylist() {
     container.appendChild(li);
   });
 }
+
 function closeCurrentPlaylistModal() {
   const modal = document.getElementById('currentPlaylistModal');
   if (modal) modal.style.display = 'none';
 }
+
 function openSettingsModal() {
 const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
 modal.show();
@@ -1785,7 +1846,6 @@ return str.replace(/&/g, '&amp;')
 .replace(/'/g, '&#039;');
 }
 
-  // 画像ファイルを Base64 文字列に変換するヘルパー関数
 function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1793,92 +1853,6 @@ function readFileAsDataURL(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-// プレイリスト保存処理
-async function createPlaylist() {
-  const nameInput = document.getElementById('playlistNameInput');
-  const coverInput = document.getElementById('playlistCoverInput');
-  
-  const name = nameInput.value.trim();
-  if (!name) return;
-
-  let coverUrl = '';
-  if (coverInput && coverInput.files[0]) {
-    try {
-      coverUrl = await readFileAsDataURL(coverInput.files[0]);
-    } catch (e) {
-      console.error("画像の読み込みに失敗しました", e);
-    }
-  }
-
-  const newPlaylist = {
-    id: 'pl_' + Date.now(),
-    name: name,
-    coverUrl: coverUrl, // 画像データ（Base64）または空文字
-    songIds: []
-  };
-
-  // IndexedDBに保存（ストア名 'playlists' を使用している想定）
-  const tx = db.transaction('playlists', 'readwrite');
-  await tx.objectStore('playlists').add(newPlaylist);
-
-  playlistsData.push(newPlaylist);
-  renderPlaylists();
-}
-  // 変数で現在のURLを保持しておき、更新時に解放する
-let currentAudioUrl = null;
-
-function loadAudioBlob(blob) {
-  if (currentAudioUrl) {
-    URL.revokeObjectURL(currentAudioUrl); // メモリ解放
-  }
-  currentAudioUrl = URL.createObjectURL(blob);
-  audioPlayer.src = currentAudioUrl;
-}
-
-  let isSeeking = false;
-
-const seekBar = document.getElementById('seekBar');
-
-// ドラッグ開始・終了のフラグ管理
-seekBar.addEventListener('mousedown', () => { isSeeking = true; });
-seekBar.addEventListener('touchstart', () => { isSeeking = true; });
-
-seekBar.addEventListener('change', () => {
-  audioPlayer.currentTime = seekBar.value;
-  isSeeking = false;
-});
-
-// 再生中の更新はドラッグ中以外のみ行う
-audioPlayer.addEventListener('timeupdate', () => {
-  if (!isSeeking && audioPlayer.duration) {
-    seekBar.value = audioPlayer.currentTime;
-  }
-});
-  
-  audioPlayer.onerror = (e) => {
-  console.error("音声の読み込みエラーが発生しました", e);
-  alert("この楽曲を再生できませんでした。次の曲へ移動します。");
-  playNextSong(); // 次の曲へスキップ処理
-};
-  
-// 音量スライダーの連動処理
-const audio = document.getElementById('audioPlayer');
-// 重複・誤計算を避けるため、HTMLの oninput="setVolume(this.value)" に一本化するか、イベントリスナーを修正
-const volumeSlider = document.getElementById('volumeSlider');
-if (volumeSlider && audio) {
-  volumeSlider.addEventListener('input', (e) => {
-  const val = parseFloat(e.target.value);
-  
-  // Web Audio APIが初期化されている場合は GainNode で音量を変更
-  if (gainNode) {
-    gainNode.gain.value = val;
-  } else {
-    // フォールバック（PC等）
-    audio.volume = val;
-  }
-});
 }
 </script>
 </body>
