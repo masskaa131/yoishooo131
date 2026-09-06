@@ -151,6 +151,19 @@ background-color: rgba(255, 255, 255, 0.15);
 input::placeholder {
 color: #bbb !important;
 }
+
+  /* <style> タグ内に追記 */
+
+/* アプリ全体、または一番上のヘッダー要素に適用 */
+header, .header, body {
+  /* iPhoneのステータスバーの高さを自動調整（非対応端末用フォールバック付き） */
+  padding-top: env(safe-area-inset-top, 20px);
+}
+
+/* フルスクリーンプレイヤーなどを表示する場合も同様に適用 */
+.fullscreen-player {
+  padding-top: env(safe-area-inset-top, 20px);
+}
 /* ==========================================
 3. Batch Operation Toolbar
 ========================================== */
