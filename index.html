@@ -591,7 +591,48 @@ color: #fff;
 border-color: var(--accent-color);
 box-shadow: none;
 }
+/* 再生中リストモーダル用スタイル */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  z-index: 400;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
 
+.modal-overlay .modal-content {
+  background: var(--modal-glass);
+  border-top: 1px solid var(--border-glass);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 80vh;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.modal-overlay .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 10px;
+}
+
+.modal-overlay .close-btn {
+  background: none;
+  border: none;
+  color: var(--text-main);
+  font-size: 24px;
+  cursor: pointer;
+}
 @keyframes fadeIn {
 from { opacity: 0; transform: translateY(-6px); }
 to { opacity: 1; transform: translateY(0); }
@@ -954,24 +995,23 @@ store.put(playlist).onsuccess = () => resolve();
 5. UI Navigation & Rendering
 ========================================== */
 function switchTab(tab) {
-activeTab = tab;
+  activeTab = tab;
 
-// ボタンの赤色（activeクラス）切り替え
-document.querySelectorAll('.tab-btn').forEach(btn => {
-if (btn.dataset.tab === tab) {
-btn.classList.add('active');
-} else {
-btn.classList.remove('active');
-}
-});
+  // '.tab-btn' を '.nav-tab-btn' に修正
+  document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+    if (btn.dataset.tab === tab) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
 
-// コンテンツの表示切り替え
-const songsTab = document.getElementById('songsTabContent');
-const playlistsTab = document.getElementById('playlistsTabContent');
-if (songsTab) songsTab.style.display = tab === 'songs' ? 'block' : 'none';
-if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : 'none';
+  const songsTab = document.getElementById('songsTabContent');
+  const playlistsTab = document.getElementById('playlistsTabContent');
+  if (songsTab) songsTab.style.display = tab === 'songs' ? 'block' : 'none';
+  if (playlistsTab) playlistsTab.style.display = tab === 'playlists' ? 'block' : 'none';
 
-if (tab === 'playlists') renderPlaylists();
+  if (tab === 'playlists') renderPlaylists();
 }
 
 function renderSongs() {
@@ -1381,19 +1421,18 @@ playSongAtIndex(nextIndex);
 }
 }
 function initWebAudio() {
-  // 初回再生時にAudioContextを生成（iOS対策）
-  if (!audioCtx) {
+  const audio = document.getElementById('audioPlayer');
+  if (!audio) return;
 
+  if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     gainNode = audioCtx.createGain();
     trackSource = audioCtx.createMediaElementSource(audio);
     
-    // audio -> gainNode -> 出力(スピーカー) の順に接続
     trackSource.connect(gainNode);
     gainNode.connect(audioCtx.destination);
   }
   
-  // iOSの自動再生制限対策（Stateがsuspendedならresumeする）
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -1615,7 +1654,32 @@ function openCurrentPlaylistModal() {
     closeFullPlayer();
   }
 }
+function renderCurrentPlaylist() {
+  const container = document.getElementById('currentPlaylistItems');
+  if (!container) return;
+  container.innerHTML = '';
 
+  if (songsData.length === 0) {
+    container.innerHTML = '<div class="text-center text-muted py-4 small">楽曲がありません</div>';
+    return;
+  }
+
+  songsData.forEach((song, index) => {
+    const isPlaying = currentPlayingIndex === index;
+    const li = document.createElement('div');
+    li.className = `song-item ${isPlaying ? 'active' : ''}`;
+    li.innerHTML = `
+      <div class="song-cover" onclick="playSongAtIndex(${index}); closeCurrentPlaylistModal();">
+        ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
+      </div>
+      <div class="song-details" onclick="playSongAtIndex(${index}); closeCurrentPlaylistModal();">
+        <div class="song-title">${escapeHtml(song.title)}</div>
+        <div class="song-artist">${escapeHtml(song.artist)}</div>
+      </div>
+    `;
+    container.appendChild(li);
+  });
+}
 function closeCurrentPlaylistModal() {
   const modal = document.getElementById('currentPlaylistModal');
   if (modal) modal.style.display = 'none';
