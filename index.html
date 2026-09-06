@@ -153,10 +153,6 @@ input::placeholder {
 color: #bbb !important;
 }
 
-.fullscreen-player {
-padding-top: env(safe-area-inset-top, 20px);
-}
-
 /* ==========================================
 3. Batch Operation Toolbar
 ========================================== */
@@ -715,9 +711,9 @@ to { opacity: 1; transform: translateY(0); }
 <div class="glass-card mb-3">
 <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
 <i class="fa-solid fa-cloud-arrow-up text-danger mb-2" style="font-size: 28px;"></i>
-<div class="fw-bold small">楽曲ファイルを追加 (ドラッグ＆ドロップ対応)</div>
-<div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A ファイルに対応</div>
-<input type="file" id="fileInput" accept="audio/*, .mp3, .wav, .m4a, .aac" multiple style="display: none;" onchange="handleFileImport(this.files)">
+<div class="fw-bold small">楽曲ファイルを追加 (タップして選択)</div>
+<div class="text-muted style-sub" style="font-size: 11px;">MP3, WAV, AAC, M4A, FLAC等に対応</div>
+<input type="file" id="fileInput" accept="audio/*, .mp3, .wav, .m4a, .aac, .flac, .ogg" multiple style="display: none;" onchange="handleFileImport(this.files)">
 </div>
 </div>
 
@@ -896,26 +892,33 @@ to { opacity: 1; transform: translateY(0); }
 ========================================== */
 const DB_NAME = 'AppleMusicPWADB_Full';
 const DB_VERSION = 1;
-let db;
+let db = null;
 
 function initDB() {
-return new Promise((resolve, reject) => {
-const request = indexedDB.open(DB_NAME, DB_VERSION);
-request.onupgradeneeded = (e) => {
-db = e.target.result;
-if (!db.objectStoreNames.contains('songs')) {
-db.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const database = e.target.result;
+      if (!database.objectStoreNames.contains('songs')) {
+        database.createObjectStore('songs', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!database.objectStoreNames.contains('playlists')) {
+        database.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    request.onsuccess = (e) => {
+      db = e.target.result;
+      resolve(db);
+    };
+    request.onerror = (e) => reject(e);
+  });
 }
-if (!db.objectStoreNames.contains('playlists')) {
-db.createObjectStore('playlists', { keyPath: 'id', autoIncrement: true });
-}
-};
-request.onsuccess = (e) => {
-db = e.target.result;
-resolve();
-};
-request.onerror = (e) => reject(e);
-});
+
+async function ensureDB() {
+  if (!db) {
+    await initDB();
+  }
+  return db;
 }
 
 /* ==========================================
@@ -944,93 +947,110 @@ let isSeeking = false;
 3. Lifecycle & Initialization
 ========================================== */
 window.addEventListener('DOMContentLoaded', async () => {
-await initDB();
-await loadSongsFromDB();
-await loadPlaylistsFromDB();
-setupDragAndDrop();
-setupAudioErrorHandling();
-populatePlaylistDropdown();
-renderSongs();
-renderPlaylists();
+  try {
+    await ensureDB();
+    await loadSongsFromDB();
+    await loadPlaylistsFromDB();
+    setupDragAndDrop();
+    setupAudioErrorHandling();
+    populatePlaylistDropdown();
+    renderSongs();
+    renderPlaylists();
+  } catch (err) {
+    console.error("初期化エラー:", err);
+  }
 });
 
 /* ==========================================
 4. DB Sync Functions
 ========================================== */
 async function loadSongsFromDB() {
-return new Promise((resolve) => {
-const tx = db.transaction('songs', 'readonly');
-const store = tx.objectStore('songs');
-const req = store.getAll();
-req.onsuccess = () => {
-songsData = req.result || [];
-resolve();
-};
-});
+  await ensureDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('songs', 'readonly');
+    const store = tx.objectStore('songs');
+    const req = store.getAll();
+    req.onsuccess = () => {
+      songsData = req.result || [];
+      resolve();
+    };
+    req.onerror = () => {
+      songsData = [];
+      resolve();
+    };
+  });
 }
 
 async function loadPlaylistsFromDB() {
-return new Promise((resolve) => {
-const tx = db.transaction('playlists', 'readonly');
-const store = tx.objectStore('playlists');
-const req = store.getAll();
-req.onsuccess = async () => {
-playlistsData = req.result || [];
-if (playlistsData.length === 0) {
-const p1 = { name: 'お気に入り', coverUrl: '', songIds: [] };
-const p2 = { name: 'ドライブ', coverUrl: '', songIds: [] };
-await savePlaylistToDB(p1);
-await savePlaylistToDB(p2);
-playlistsData = [p1, p2];
-}
-resolve();
-};
-});
+  await ensureDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('playlists', 'readonly');
+    const store = tx.objectStore('playlists');
+    const req = store.getAll();
+    req.onsuccess = async () => {
+      playlistsData = req.result || [];
+      if (playlistsData.length === 0) {
+        const p1 = { name: 'お気に入り', coverUrl: '', songIds: [] };
+        const p2 = { name: 'ドライブ', coverUrl: '', songIds: [] };
+        await savePlaylistToDB(p1);
+        await savePlaylistToDB(p2);
+        playlistsData = [p1, p2];
+      }
+      resolve();
+    };
+    req.onerror = () => {
+      playlistsData = [];
+      resolve();
+    };
+  });
 }
 
 async function saveSongToDB(song) {
-return new Promise((resolve, reject) => {
-const tx = db.transaction('songs', 'readwrite');
-const store = tx.objectStore('songs');
-const req = store.add(song);
-req.onsuccess = () => {
-song.id = req.result;
-resolve(song);
-};
-req.onerror = (e) => reject(e);
-});
+  await ensureDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('songs', 'readwrite');
+    const store = tx.objectStore('songs');
+    const req = store.add(song);
+    req.onsuccess = () => {
+      song.id = req.result;
+      resolve(song);
+    };
+    req.onerror = (e) => reject(e);
+  });
 }
 
 async function deleteSongFromDB(id) {
-return new Promise((resolve) => {
-const tx = db.transaction('songs', 'readwrite');
-const store = tx.objectStore('songs');
-store.delete(id).onsuccess = () => resolve();
-});
+  await ensureDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction('songs', 'readwrite');
+    const store = tx.objectStore('songs');
+    store.delete(id).onsuccess = () => resolve();
+  });
 }
 
 async function savePlaylistToDB(playlist) {
-return new Promise((resolve, reject) => {
-const tx = db.transaction('playlists', 'readwrite');
-const store = tx.objectStore('playlists');
-const req = store.add(playlist);
-req.onsuccess = () => {
-playlist.id = req.result;
-resolve(playlist);
-};
-req.onerror = (e) => reject(e);
-});
+  await ensureDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('playlists', 'readwrite');
+    const store = tx.objectStore('playlists');
+    const req = store.add(playlist);
+    req.onsuccess = () => {
+      playlist.id = req.result;
+      resolve(playlist);
+    };
+    req.onerror = (e) => reject(e);
+  });
 }
 
 /* ==========================================
 5. UI Navigation & Rendering
 ========================================== */
 function hideBootstrapModal(modalId) {
-const el = document.getElementById(modalId);
-if (el) {
-const modal = bootstrap.Modal.getOrCreateInstance(el);
-modal.hide();
-}
+  const el = document.getElementById(modalId);
+  if (el) {
+    const modal = bootstrap.Modal.getOrCreateInstance(el);
+    modal.hide();
+  }
 }
 
 function switchTab(tab) {
@@ -1053,57 +1073,57 @@ function switchTab(tab) {
 }
 
 function renderSongs() {
-const container = document.getElementById('songListContainer');
-const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
-const sortBy = document.getElementById('sortSelect').value;
+  const container = document.getElementById('songListContainer');
+  const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+  const sortBy = document.getElementById('sortSelect').value;
 
-let filtered = songsData.filter(s => {
-if (!searchQuery) return true;
-const title = (s.title || '').toLowerCase();
-const artist = (s.artist || '').toLowerCase();
-return title.includes(searchQuery) || artist.includes(searchQuery);
-});
+  let filtered = songsData.filter(s => {
+    if (!searchQuery) return true;
+    const title = (s.title || '').toLowerCase();
+    const artist = (s.artist || '').toLowerCase();
+    return title.includes(searchQuery) || artist.includes(searchQuery);
+  });
 
-if (sortBy === 'title') {
-filtered.sort((a, b) => a.title.localeCompare(b.title));
-} else if (sortBy === 'artist') {
-filtered.sort((a, b) => a.artist.localeCompare(b.artist));
-} else {
-filtered.sort((a, b) => b.id - a.id);
-}
+  if (sortBy === 'title') {
+    filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  } else if (sortBy === 'artist') {
+    filtered.sort((a, b) => (a.artist || '').localeCompare(b.artist || ''));
+  } else {
+    filtered.sort((a, b) => b.id - a.id);
+  }
 
-container.innerHTML = '';
+  container.innerHTML = '';
 
-if (filtered.length === 0) {
-container.innerHTML = `<li class="text-center text-muted py-5 small">楽曲が見つかりません</li>`;
-return;
-}
+  if (filtered.length === 0) {
+    container.innerHTML = `<li class="text-center text-muted py-5 small">楽曲が見つかりません</li>`;
+    return;
+  }
 
-filtered.forEach(song => {
-const li = document.createElement('li');
-const isPlaying = currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === song.id;
-li.className = `song-item ${isPlaying ? 'active' : ''}`;
+  filtered.forEach(song => {
+    const li = document.createElement('li');
+    const isPlaying = currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === song.id;
+    li.className = `song-item ${isPlaying ? 'active' : ''}`;
 
-const isChecked = selectedSongIds.has(song.id);
+    const isChecked = selectedSongIds.has(song.id);
 
-li.innerHTML = `
-${isBatchMode ? `<input type="checkbox" class="song-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelectSong(${song.id})">` : ''}
-<div class="song-cover" onclick="playSongById(${song.id})">
-${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
-</div>
-<div class="song-details" onclick="${isBatchMode ? `toggleSelectSong(${song.id})` : `playSongById(${song.id})`}">
-<div class="song-title">${escapeHtml(song.title)}</div>
-<div class="song-artist">${escapeHtml(song.artist)}</div>
-</div>
-<div class="song-actions">
-<button class="btn-action-icon" onclick="openEditSongModal(${song.id})"><i class="fa-solid fa-pen"></i></button>
-<button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
-</div>
-`;
-container.appendChild(li);
-});
+    li.innerHTML = `
+      ${isBatchMode ? `<input type="checkbox" class="song-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelectSong(${song.id})">` : ''}
+      <div class="song-cover" onclick="playSongById(${song.id})">
+      ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid ${isPlaying ? 'fa-volume-high text-danger' : 'fa-music text-secondary'}"></i>`}
+      </div>
+      <div class="song-details" onclick="${isBatchMode ? `toggleSelectSong(${song.id})` : `playSongById(${song.id})`}">
+      <div class="song-title">${escapeHtml(song.title)}</div>
+      <div class="song-artist">${escapeHtml(song.artist)}</div>
+      </div>
+      <div class="song-actions">
+      <button class="btn-action-icon" onclick="openEditSongModal(${song.id})"><i class="fa-solid fa-pen"></i></button>
+      <button class="btn-action-icon" onclick="deleteSingleSong(${song.id})"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    `;
+    container.appendChild(li);
+  });
 
-updateBatchToolbarUI();
+  updateBatchToolbarUI();
 }
 
 function renderPlaylists() {
@@ -1139,145 +1159,143 @@ function renderPlaylists() {
 }
 
 async function deletePlaylist(id) {
-const playlist = playlistsData.find(p => p.id === id);
-const name = playlist ? playlist.name : 'このプレイリスト';
+  const playlist = playlistsData.find(p => p.id === id);
+  const name = playlist ? playlist.name : 'このプレイリスト';
 
-if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
+  if (!confirm(`「${name}」を削除してもよろしいですか？\n（※楽曲データ自体は削除されません）`)) return;
 
-const tx = db.transaction('playlists', 'readwrite');
-await tx.objectStore('playlists').delete(id);
+  await ensureDB();
+  const tx = db.transaction('playlists', 'readwrite');
+  await tx.objectStore('playlists').delete(id);
 
-playlistsData = playlistsData.filter(p => p.id !== id);
+  playlistsData = playlistsData.filter(p => p.id !== id);
 
-populatePlaylistDropdown();
-renderPlaylists();
+  populatePlaylistDropdown();
+  renderPlaylists();
 }
 
 /* ==========================================
 6. File Import & Processing
 ========================================== */
 function setupDragAndDrop() {
-const zone = document.getElementById('dropZone');
+  const zone = document.getElementById('dropZone');
+  if (!zone) return;
 
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-zone.addEventListener(eventName, (e) => {
-e.preventDefault();
-e.stopPropagation();
-}, false);
-});
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    zone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+  });
 
-['dragenter', 'dragover'].forEach(eventName => {
-zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
-});
+  ['dragenter', 'dragover'].forEach(eventName => {
+    zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+  });
 
-['dragleave', 'drop'].forEach(eventName => {
-zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
-});
+  ['dragleave', 'drop'].forEach(eventName => {
+    zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+  });
 
-zone.addEventListener('drop', (e) => {
-const dt = e.dataTransfer;
-if (dt && dt.files.length > 0) {
-handleFileImport(dt.files);
-}
-});
+  zone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files.length > 0) {
+      handleFileImport(dt.files);
+    }
+  });
 }
 
 function parseAudioMetadata(file) {
-return new Promise((resolve) => {
-const defaultTitle = file.name.replace(/\.[^/.]+$/, "");
-const fallbackData = { title: defaultTitle, artist: '不明なアーティスト', coverUrl: null };
+  return new Promise((resolve) => {
+    const defaultTitle = file.name ? file.name.replace(/\.[^/.]+$/, "") : "無題の楽曲";
+    const fallbackData = { title: defaultTitle, artist: '不明なアーティスト', coverUrl: null };
 
-if (!window.jsmediatags) {
-resolve(fallbackData);
-return;
-}
+    if (!window.jsmediatags) {
+      resolve(fallbackData);
+      return;
+    }
 
-try {
-window.jsmediatags.read(file, {
-onSuccess: function(tag) {
-try {
-const tags = tag.tags;
-const title = tags.title ? tags.title.trim() : defaultTitle;
-const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
-let coverUrl = null;
+    try {
+      window.jsmediatags.read(file, {
+        onSuccess: function(tag) {
+          try {
+            const tags = tag.tags;
+            const title = tags.title ? tags.title.trim() : defaultTitle;
+            const artist = tags.artist ? tags.artist.trim() : '不明なアーティスト';
+            let coverUrl = null;
 
-if (tags.picture) {
-const { data, format } = tags.picture;
-let base64String = "";
-for (let i = 0; i < data.length; i++) {
-base64String += String.fromCharCode(data[i]);
-}
-coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
-}
-resolve({ title, artist, coverUrl });
-} catch(e) {
-resolve(fallbackData);
-}
-},
-onError: function() {
-resolve(fallbackData);
-}
-});
-} catch(e) {
-resolve(fallbackData);
-}
-});
+            if (tags.picture) {
+              const { data, format } = tags.picture;
+              let base64String = "";
+              for (let i = 0; i < data.length; i++) {
+                base64String += String.fromCharCode(data[i]);
+              }
+              coverUrl = `data:${format};base64,${window.btoa(base64String)}`;
+            }
+            resolve({ title, artist, coverUrl });
+          } catch(e) {
+            resolve(fallbackData);
+          }
+        },
+        onError: function() {
+          resolve(fallbackData);
+        }
+      });
+    } catch(e) {
+      resolve(fallbackData);
+    }
+  });
 }
 
 async function handleFileImport(files) {
-if (!files || files.length === 0) return;
-let addedCount = 0;
+  if (!files || files.length === 0) return;
+  let addedCount = 0;
 
-for (let i = 0; i < files.length; i++) {
-const file = files[i];
-try {
-const isAudioType = file.type.startsWith('audio/') || file.type === '';
-const isAudioExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    try {
+      // iOS環境での判定拒否を防ぐためファイルフィルタ制限を取り除き、読み込みを実行
+      const meta = await parseAudioMetadata(file);
 
-if (!isAudioType && !isAudioExtension) continue;
+      const newSong = {
+        title: meta.title || (file.name ? file.name.replace(/\.[^/.]+$/, "") : "無題の楽曲"),
+        artist: meta.artist || '不明なアーティスト',
+        coverUrl: meta.coverUrl || null,
+        audioBlob: file,
+        addedAt: Date.now()
+      };
 
-const meta = await parseAudioMetadata(file);
+      const saved = await saveSongToDB(newSong);
+      songsData.unshift(saved);
+      addedCount++;
+    } catch (err) {
+      console.error("ファイル追加エラー:", err);
+    }
+  }
 
-const newSong = {
-title: meta.title,
-artist: meta.artist,
-coverUrl: meta.coverUrl,
-audioBlob: file,
-addedAt: Date.now()
-};
+  if (addedCount > 0) {
+    renderSongs();
+  } else {
+    alert('ファイルの追加に失敗しました。');
+  }
 
-const saved = await saveSongToDB(newSong);
-songsData.unshift(saved);
-addedCount++;
-} catch (err) {
-console.error("ファイル追加エラー:", err);
-}
-}
-
-if (addedCount > 0) {
-renderSongs();
-} else {
-alert('対応している音声ファイルが見つかりませんでした。');
-}
-
-const fileInput = document.getElementById('fileInput');
-if (fileInput) fileInput.value = '';
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) fileInput.value = '';
 }
 
 async function deleteSingleSong(id) {
-if (!confirm('この楽曲を削除してもよろしいですか？')) return;
-await deleteSongFromDB(id);
-songsData = songsData.filter(s => s.id !== id);
-selectedSongIds.delete(id);
+  if (!confirm('この楽曲を削除してもよろしいですか？')) return;
+  await deleteSongFromDB(id);
+  songsData = songsData.filter(s => s.id !== id);
+  selectedSongIds.delete(id);
 
-if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === id) {
-const audio = document.getElementById('audioPlayer');
-audio.pause();
-currentPlayingIndex = -1;
-updatePlayerUI();
-}
+  if (currentPlayingIndex !== -1 && songsData[currentPlayingIndex]?.id === id) {
+    const audio = document.getElementById('audioPlayer');
+    audio.pause();
+    currentPlayingIndex = -1;
+    updatePlayerUI();
+  }
 
-renderSongs();
+  renderSongs();
 }
 
 function openEditSongModal(songId) {
@@ -1303,9 +1321,10 @@ async function saveSongEdit() {
 
   const song = songsData.find(s => s.id === editingSongId);
   if (song) {
-    song.title = newTitle || 'Unknown Title';
-    song.artist = newArtist || 'Unknown Artist';
+    song.title = newTitle || '無題の楽曲';
+    song.artist = newArtist || '不明なアーティスト';
 
+    await ensureDB();
     const tx = db.transaction('songs', 'readwrite');
     await tx.objectStore('songs').put(song);
 
@@ -1322,169 +1341,171 @@ async function saveSongEdit() {
 7. Batch Processing Functions
 ========================================== */
 function toggleBatchMode() {
-isBatchMode = !isBatchMode;
-if (!isBatchMode) {
-selectedSongIds.clear();
-}
-renderSongs();
+  isBatchMode = !isBatchMode;
+  if (!isBatchMode) {
+    selectedSongIds.clear();
+  }
+  renderSongs();
 }
 
 function toggleSelectSong(id) {
-if (selectedSongIds.has(id)) {
-selectedSongIds.delete(id);
-} else {
-selectedSongIds.add(id);
-}
-renderSongs();
+  if (selectedSongIds.has(id)) {
+    selectedSongIds.delete(id);
+  } else {
+    selectedSongIds.add(id);
+  }
+  renderSongs();
 }
 
 function toggleSelectAll(checked) {
-if (checked) {
-songsData.forEach(s => selectedSongIds.add(s.id));
-} else {
-selectedSongIds.clear();
-}
-renderSongs();
+  if (checked) {
+    songsData.forEach(s => selectedSongIds.add(s.id));
+  } else {
+    selectedSongIds.clear();
+  }
+  renderSongs();
 }
 
 function updateBatchToolbarUI() {
-const toolbar = document.getElementById('batchToolbar');
-toolbar.classList.toggle('active', isBatchMode);
+  const toolbar = document.getElementById('batchToolbar');
+  if (toolbar) toolbar.classList.toggle('active', isBatchMode);
 
-const countText = document.getElementById('selectedCountText');
-countText.innerText = `${selectedSongIds.size}件選択中`;
+  const countText = document.getElementById('selectedCountText');
+  if (countText) countText.innerText = `${selectedSongIds.size}件選択中`;
 
-const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-if (selectAllCheckbox) {
-selectAllCheckbox.checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
-}
+  const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = songsData.length > 0 && selectedSongIds.size === songsData.length;
+  }
 }
 
 function populatePlaylistDropdown() {
-const select = document.getElementById('batchPlaylistSelect');
-select.innerHTML = '<option value="">追加先...</option>';
-playlistsData.forEach(p => {
-const opt = document.createElement('option');
-opt.value = p.id;
-opt.textContent = p.name;
-select.appendChild(opt);
-});
+  const select = document.getElementById('batchPlaylistSelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">追加先...</option>';
+  playlistsData.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    select.appendChild(opt);
+  });
 }
 
 async function executeBatchAddToPlaylist() {
-const playlistId = Number(document.getElementById('batchPlaylistSelect').value);
-if (!playlistId) {
-alert('追加先のプレイリストを選択してください。');
-return;
-}
-if (selectedSongIds.size === 0) {
-alert('曲が選択されていません。');
-return;
-}
+  const playlistId = Number(document.getElementById('batchPlaylistSelect').value);
+  if (!playlistId) {
+    alert('追加先のプレイリストを選択してください。');
+    return;
+  }
+  if (selectedSongIds.size === 0) {
+    alert('曲が選択されていません。');
+    return;
+  }
 
-const playlist = playlistsData.find(p => p.id === playlistId);
-if (playlist) {
-const newIds = Array.from(selectedSongIds);
-playlist.songIds = Array.from(new Set([...(playlist.songIds || []), ...newIds]));
+  const playlist = playlistsData.find(p => p.id === playlistId);
+  if (playlist) {
+    const newIds = Array.from(selectedSongIds);
+    playlist.songIds = Array.from(new Set([...(playlist.songIds || []), ...newIds]));
 
-const tx = db.transaction('playlists', 'readwrite');
-await tx.objectStore('playlists').put(playlist);
+    await ensureDB();
+    const tx = db.transaction('playlists', 'readwrite');
+    await tx.objectStore('playlists').put(playlist);
 
-alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
-selectedSongIds.clear();
-toggleBatchMode();
-renderPlaylists();
-}
+    alert(`${selectedSongIds.size}曲を「${playlist.name}」に追加しました。`);
+    selectedSongIds.clear();
+    toggleBatchMode();
+    renderPlaylists();
+  }
 }
 
 async function executeBatchDelete() {
-if (selectedSongIds.size === 0) {
-alert('曲が選択されていません。');
-return;
-}
+  if (selectedSongIds.size === 0) {
+    alert('曲が選択されていません。');
+    return;
+  }
 
-if (!confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) return;
+  if (!confirm(`選択した ${selectedSongIds.size} 件の楽曲を削除しますか？`)) return;
 
-for (let id of selectedSongIds) {
-await deleteSongFromDB(id);
-}
+  for (let id of selectedSongIds) {
+    await deleteSongFromDB(id);
+  }
 
-songsData = songsData.filter(s => !selectedSongIds.has(s.id));
-selectedSongIds.clear();
-toggleBatchMode();
-renderSongs();
+  songsData = songsData.filter(s => !selectedSongIds.has(s.id));
+  selectedSongIds.clear();
+  toggleBatchMode();
+  renderSongs();
 }
 
 /* ==========================================
 8. Audio Player Core Logic
 ========================================== */
 function playSongById(id) {
-const index = songsData.findIndex(s => s.id === id);
-if (index !== -1) {
-playSongAtIndex(index);
-}
+  const index = songsData.findIndex(s => s.id === id);
+  if (index !== -1) {
+    playSongAtIndex(index);
+  }
 }
 
 function playSongAtIndex(index) {
-if (index < 0 || index >= songsData.length) return;
+  if (index < 0 || index >= songsData.length) return;
 
-currentPlayingIndex = index;
-const song = songsData[currentPlayingIndex];
+  currentPlayingIndex = index;
+  const song = songsData[currentPlayingIndex];
 
-const audio = document.getElementById('audioPlayer');
+  const audio = document.getElementById('audioPlayer');
 
-if (currentAudioUrl) {
-URL.revokeObjectURL(currentAudioUrl);
-currentAudioUrl = null;
-}
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
 
-if (song.audioBlob) {
-currentAudioUrl = URL.createObjectURL(song.audioBlob);
-audio.src = currentAudioUrl;
-initWebAudio();
-audio.play().catch(e => console.error(e));
-} else {
-alert('この楽曲には音声データが紐付けられていません。');
-return;
-}
+  if (song.audioBlob) {
+    currentAudioUrl = URL.createObjectURL(song.audioBlob);
+    audio.src = currentAudioUrl;
+    initWebAudio();
+    audio.play().catch(e => console.error(e));
+  } else {
+    alert('この楽曲には音声データが紐付けられていません。');
+    return;
+  }
 
-updatePlayerUI();
-renderSongs();
+  updatePlayerUI();
+  renderSongs();
 }
 
 function togglePlay() {
-const audio = document.getElementById('audioPlayer');
-if (currentPlayingIndex === -1) {
-if (songsData.length > 0) playSongAtIndex(0);
-return;
-}
+  const audio = document.getElementById('audioPlayer');
+  if (currentPlayingIndex === -1) {
+    if (songsData.length > 0) playSongAtIndex(0);
+    return;
+  }
 
-if (audio.paused) {
-  initWebAudio();
-  audio.play();
-} else {
-  audio.pause();
-}
-updatePlayerUI();
+  if (audio.paused) {
+    initWebAudio();
+    audio.play();
+  } else {
+    audio.pause();
+  }
+  updatePlayerUI();
 }
 
 function playNext() {
-if (songsData.length === 0) return;
+  if (songsData.length === 0) return;
 
-if (isShuffle) {
-const nextIndex = Math.floor(Math.random() * songsData.length);
-playSongAtIndex(nextIndex);
-} else {
-let nextIndex = currentPlayingIndex + 1;
-if (nextIndex >= songsData.length) {
-if (repeatMode === 'ALL') {
-nextIndex = 0;
-} else {
-return;
-}
-}
-playSongAtIndex(nextIndex);
-}
+  if (isShuffle) {
+    const nextIndex = Math.floor(Math.random() * songsData.length);
+    playSongAtIndex(nextIndex);
+  } else {
+    let nextIndex = currentPlayingIndex + 1;
+    if (nextIndex >= songsData.length) {
+      if (repeatMode === 'ALL') {
+        nextIndex = 0;
+      } else {
+        return;
+      }
+    }
+    playSongAtIndex(nextIndex);
+  }
 }
 
 function initWebAudio() {
@@ -1506,146 +1527,146 @@ function initWebAudio() {
 }
 
 function playPrev() {
-if (songsData.length === 0) return;
+  if (songsData.length === 0) return;
 
-let prevIndex = currentPlayingIndex - 1;
-if (prevIndex < 0) {
-prevIndex = songsData.length - 1;
-}
-playSongAtIndex(prevIndex);
+  let prevIndex = currentPlayingIndex - 1;
+  if (prevIndex < 0) {
+    prevIndex = songsData.length - 1;
+  }
+  playSongAtIndex(prevIndex);
 }
 
 function handleSongEnd() {
-if (repeatMode === 'ONE') {
-playSongAtIndex(currentPlayingIndex);
-} else {
-playNext();
-}
+  if (repeatMode === 'ONE') {
+    playSongAtIndex(currentPlayingIndex);
+  } else {
+    playNext();
+  }
 }
 
 function toggleShuffle() {
-isShuffle = !isShuffle;
-document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
-document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
+  isShuffle = !isShuffle;
+  document.getElementById('miniShuffleBtn').classList.toggle('active', isShuffle);
+  document.getElementById('fullShuffleBtn').classList.toggle('active', isShuffle);
 }
 
 function toggleRepeat() {
-if (repeatMode === 'OFF') repeatMode = 'ALL';
-else if (repeatMode === 'ALL') repeatMode = 'ONE';
-else repeatMode = 'OFF';
+  if (repeatMode === 'OFF') repeatMode = 'ALL';
+  else if (repeatMode === 'ALL') repeatMode = 'ONE';
+  else repeatMode = 'OFF';
 
-const isBtnActive = repeatMode !== 'OFF';
-const miniBtn = document.getElementById('miniRepeatBtn');
-const fullBtn = document.getElementById('fullRepeatBtn');
+  const isBtnActive = repeatMode !== 'OFF';
+  const miniBtn = document.getElementById('miniRepeatBtn');
+  const fullBtn = document.getElementById('fullRepeatBtn');
 
-miniBtn.classList.toggle('active', isBtnActive);
-fullBtn.classList.toggle('active', isBtnActive);
+  miniBtn.classList.toggle('active', isBtnActive);
+  fullBtn.classList.toggle('active', isBtnActive);
 
-if (repeatMode === 'ONE') {
-miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
-fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
-} else {
-miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
-fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
-}
+  if (repeatMode === 'ONE') {
+    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i><span style="font-size: 9px; position: absolute; top:2px; right:2px;">1</span>';
+  } else {
+    miniBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+    fullBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+  }
 }
 
 function updateProgress() {
-const audio = document.getElementById('audioPlayer');
-if (!audio.duration) return;
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
 
-const pct = (audio.currentTime / audio.duration) * 100;
-document.getElementById('miniProgressBar').style.width = `${pct}%`;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('miniProgressBar').style.width = `${pct}%`;
 
-const fullSlider = document.getElementById('fullSeekSlider');
-if (fullSlider && !isSeeking) {
-  fullSlider.value = pct;
-}
+  const fullSlider = document.getElementById('fullSeekSlider');
+  if (fullSlider && !isSeeking) {
+    fullSlider.value = pct;
+  }
 
-document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
-document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
+  document.getElementById('currentTimeText').innerText = formatTime(audio.currentTime);
+  document.getElementById('durationTimeText').innerText = formatTime(audio.duration);
 }
 
 function seekMiniPlayer(e) {
-const audio = document.getElementById('audioPlayer');
-if (!audio.duration) return;
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
 
-const rect = e.currentTarget.getBoundingClientRect();
-const clickX = e.clientX - rect.left;
-const width = rect.width;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const width = rect.width;
 
-audio.currentTime = (clickX / width) * audio.duration;
+  audio.currentTime = (clickX / width) * audio.duration;
 }
 
 function onSeekSliderChange(val) {
-const audio = document.getElementById('audioPlayer');
-if (!audio.duration) return;
+  const audio = document.getElementById('audioPlayer');
+  if (!audio.duration) return;
 
-audio.currentTime = (val / 100) * audio.duration;
+  audio.currentTime = (val / 100) * audio.duration;
 }
 
 function setVolume(val) {
-const audio = document.getElementById('audioPlayer');
-const numericVal = parseFloat(val);
-if (gainNode) {
-  gainNode.gain.value = numericVal;
-} else if (audio) {
-  audio.volume = numericVal;
-}
+  const audio = document.getElementById('audioPlayer');
+  const numericVal = parseFloat(val);
+  if (gainNode) {
+    gainNode.gain.value = numericVal;
+  } else if (audio) {
+    audio.volume = numericVal;
+  }
 }
 
 function updatePlayerUI() {
-const audio = document.getElementById('audioPlayer');
-const isPaused = audio.paused;
+  const audio = document.getElementById('audioPlayer');
+  const isPaused = audio.paused;
 
-const song = songsData[currentPlayingIndex];
+  const song = songsData[currentPlayingIndex];
 
-const miniTitle = document.getElementById('playerMiniTitle');
-const miniArtist = document.getElementById('playerMiniArtist');
-const miniCover = document.getElementById('playerMiniCover');
-const miniPlayIcon = document.getElementById('miniPlayBtnIcon');
+  const miniTitle = document.getElementById('playerMiniTitle');
+  const miniArtist = document.getElementById('playerMiniArtist');
+  const miniCover = document.getElementById('playerMiniCover');
+  const miniPlayIcon = document.getElementById('miniPlayBtnIcon');
 
-const fullTitle = document.getElementById('fullPlayerTitle');
-const fullArtist = document.getElementById('fullPlayerArtist');
-const fullCover = document.getElementById('fullPlayerCover');
-const fullPlayIcon = document.getElementById('fullPlayBtnIcon');
+  const fullTitle = document.getElementById('fullPlayerTitle');
+  const fullArtist = document.getElementById('fullPlayerArtist');
+  const fullCover = document.getElementById('fullPlayerCover');
+  const fullPlayIcon = document.getElementById('fullPlayBtnIcon');
 
-if (song) {
-miniTitle.innerText = song.title;
-miniArtist.innerText = song.artist;
-fullTitle.innerText = song.title;
-fullArtist.innerText = song.artist;
+  if (song) {
+    miniTitle.innerText = song.title;
+    miniArtist.innerText = song.artist;
+    fullTitle.innerText = song.title;
+    fullArtist.innerText = song.artist;
 
-if (song.coverUrl) {
-miniCover.innerHTML = `<img src="${song.coverUrl}">`;
-fullCover.innerHTML = `<img src="${song.coverUrl}">`;
-} else {
-miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
-fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
-}
+    if (song.coverUrl) {
+      miniCover.innerHTML = `<img src="${song.coverUrl}">`;
+      fullCover.innerHTML = `<img src="${song.coverUrl}">`;
+    } else {
+      miniCover.innerHTML = `<i class="fa-solid fa-music text-secondary"></i>`;
+      fullCover.innerHTML = `<i class="fa-solid fa-music text-secondary" style="font-size: 80px;"></i>`;
+    }
 
-setupMediaSession(song);
-}
+    setupMediaSession(song);
+  }
 
-miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
-fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
+  miniPlayIcon.className = isPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause';
+  fullPlayIcon.className = isPaused ? 'fa-solid fa-circle-play' : 'fa-solid fa-circle-pause';
 }
 
 function setupMediaSession(song) {
-if (!('mediaSession' in navigator)) return;
+  if (!('mediaSession' in navigator)) return;
 
-navigator.mediaSession.metadata = new MediaMetadata({
-title: song.title,
-artist: song.artist,
-artwork: song.coverUrl ? [
-{ src: song.coverUrl, sizes: '512x512', type: 'image/png' }
-] : []
-});
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: song.title,
+    artist: song.artist,
+    artwork: song.coverUrl ? [
+      { src: song.coverUrl, sizes: '512x512', type: 'image/png' }
+    ] : []
+  });
 
-navigator.mediaSession.setActionHandler('play', () => togglePlay());
-navigator.mediaSession.setActionHandler('pause', () => togglePlay());
-navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
-navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+  navigator.mediaSession.setActionHandler('play', () => togglePlay());
+  navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+  navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
 }
 
 function setupAudioErrorHandling() {
@@ -1671,92 +1692,95 @@ function setupAudioErrorHandling() {
 9. Modals & Helper Functions
 ========================================== */
 function openFullPlayer() {
-document.getElementById('fullPlayerModal').classList.add('active');
+  document.getElementById('fullPlayerModal').classList.add('active');
 }
 
 function closeFullPlayer() {
-document.getElementById('fullPlayerModal').classList.remove('active');
+  document.getElementById('fullPlayerModal').classList.remove('active');
 }
 
 function openCreatePlaylistModal() {
-const el = document.getElementById('createPlaylistModal');
-const modal = bootstrap.Modal.getOrCreateInstance(el);
-modal.show();
+  const el = document.getElementById('createPlaylistModal');
+  const modal = bootstrap.Modal.getOrCreateInstance(el);
+  modal.show();
 }
 
 async function saveNewPlaylist() {
-const nameInput = document.getElementById('newPlaylistNameInput');
-const coverInput = document.getElementById('playlistCoverInput');
+  const nameInput = document.getElementById('newPlaylistNameInput');
+  const coverInput = document.getElementById('playlistCoverInput');
 
-const name = nameInput.value.trim();
-if (!name) {
-  alert('プレイリスト名を入力してください。');
-  return;
-}
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert('プレイリスト名を入力してください。');
+    return;
+  }
 
-let coverUrl = '';
-if (coverInput && coverInput.files[0]) {
   try {
-    coverUrl = await readFileAsDataURL(coverInput.files[0]);
+    await ensureDB();
+
+    let coverUrl = '';
+    if (coverInput && coverInput.files[0]) {
+      try {
+        coverUrl = await readFileAsDataURL(coverInput.files[0]);
+      } catch (e) {
+        console.error("画像の読み込みに失敗しました", e);
+      }
+    }
+
+    const newPlaylist = {
+      name: name,
+      coverUrl: coverUrl,
+      songIds: []
+    };
+
+    const saved = await savePlaylistToDB(newPlaylist);
+    if (!playlistsData) playlistsData = [];
+    playlistsData.push(saved);
+
+    nameInput.value = '';
+    if (coverInput) coverInput.value = '';
+
+    hideBootstrapModal('createPlaylistModal');
+    populatePlaylistDropdown();
+    renderPlaylists();
   } catch (e) {
-    console.error("画像の読み込みに失敗しました", e);
+    console.error("プレイリスト作成エラー:", e);
+    alert("プレイリストの作成に失敗しました: " + (e.message || e));
   }
 }
 
-const newPlaylist = {
-  name: name,
-  coverUrl: coverUrl,
-  songIds: []
-};
-
-try {
-  await savePlaylistToDB(newPlaylist);
-  await loadPlaylistsFromDB();
-
-  nameInput.value = '';
-  if (coverInput) coverInput.value = '';
-
-  hideBootstrapModal('createPlaylistModal');
-  populatePlaylistDropdown();
-  renderPlaylists();
-} catch (e) {
-  console.error("プレイリスト作成エラー:", e);
-  alert("プレイリストの作成に失敗しました。");
-}
-}
-
 function openPlaylistDetail(id) {
-const playlist = playlistsData.find(p => p.id === id);
-if (!playlist) return;
+  const playlist = playlistsData.find(p => p.id === id);
+  if (!playlist) return;
 
-document.getElementById('playlistDetailTitle').innerText = playlist.name;
-const container = document.getElementById('playlistSongListContainer');
-container.innerHTML = '';
+  document.getElementById('playlistDetailTitle').innerText = playlist.name;
+  const container = document.getElementById('playlistSongListContainer');
+  container.innerHTML = '';
 
-const playlistSongs = songsData.filter(s => (playlist.songIds || []).includes(s.id));
+  const playlistSongs = songsData.filter(s => (playlist.songIds || []).includes(s.id));
 
-if (playlistSongs.length === 0) {
-container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
-} else {
-playlistSongs.forEach(song => {
-const li = document.createElement('li');
-li.className = 'song-item';
-li.innerHTML = `
-<div class="song-cover" onclick="playSongById(${song.id})">
-${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid fa-music text-secondary"></i>`}
-</div>
-<div class="song-details" onclick="playSongById(${song.id})">
-<div class="song-title">${escapeHtml(song.title)}</div>
-<div class="song-artist">${escapeHtml(song.artist)}</div>
-</div>
-`;
-container.appendChild(li);
-});
-}
+  if (playlistSongs.length === 0) {
+    container.innerHTML = '<li class="text-center text-muted py-4 small">楽曲が登録されていません</li>';
+  } else {
+    playlistSongs.forEach(song => {
+      const li = document.createElement('li');
+      li.className = 'song-item';
+      li.innerHTML = `
+        <div class="song-cover" onclick="playSongById(${song.id})">
+        ${song.coverUrl ? `<img src="${song.coverUrl}">` : `<i class="fa-solid fa-music text-secondary"></i>`}
+        </div>
+        <div class="song-details" onclick="playSongById(${song.id})">
+        <div class="song-title">${escapeHtml(song.title)}</div>
+        <div class="song-artist">${escapeHtml(song.artist)}</div>
+        </div>
+      `;
+      container.appendChild(li);
+    });
+  }
 
-const el = document.getElementById('playlistDetailModal');
-const modal = bootstrap.Modal.getOrCreateInstance(el);
-modal.show();
+  const el = document.getElementById('playlistDetailModal');
+  const modal = bootstrap.Modal.getOrCreateInstance(el);
+  modal.show();
 }
 
 function openCurrentPlaylistModal() {
@@ -1801,44 +1825,45 @@ function closeCurrentPlaylistModal() {
 }
 
 function openSettingsModal() {
-const el = document.getElementById('settingsModal');
-const modal = bootstrap.Modal.getOrCreateInstance(el);
-modal.show();
+  const el = document.getElementById('settingsModal');
+  const modal = bootstrap.Modal.getOrCreateInstance(el);
+  modal.show();
 }
 
 async function clearAllData() {
-if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
+  if (!confirm('すべての楽曲およびプレイリストデータを削除しますか？')) return;
 
-const tx1 = db.transaction('songs', 'readwrite');
-tx1.objectStore('songs').clear();
+  await ensureDB();
+  const tx1 = db.transaction('songs', 'readwrite');
+  tx1.objectStore('songs').clear();
 
-const tx2 = db.transaction('playlists', 'readwrite');
-tx2.objectStore('playlists').clear();
+  const tx2 = db.transaction('playlists', 'readwrite');
+  tx2.objectStore('playlists').clear();
 
-songsData = [];
-playlistsData = [];
+  songsData = [];
+  playlistsData = [];
 
-renderSongs();
-renderPlaylists();
+  renderSongs();
+  renderPlaylists();
 
-hideBootstrapModal('settingsModal');
-alert('すべてのデータを削除しました。');
+  hideBootstrapModal('settingsModal');
+  alert('すべてのデータを削除しました。');
 }
 
 function formatTime(sec) {
-if (isNaN(sec)) return '0:00';
-const m = Math.floor(sec / 60);
-const s = Math.floor(sec % 60);
-return `${m}:${s < 10 ? '0' : ''}${s}`;
+  if (isNaN(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
 function escapeHtml(str) {
-if (!str) return '';
-return str.replace(/&/g, '&amp;')
-.replace(/</g, '&lt;')
-.replace(/>/g, '&gt;')
-.replace(/"/g, '&quot;')
-.replace(/'/g, '&#039;');
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
 }
 
 function readFileAsDataURL(file) {
